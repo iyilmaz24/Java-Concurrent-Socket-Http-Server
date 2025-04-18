@@ -17,15 +17,16 @@ public class Main {
 
     
     try (
-      ServerSocket serverSocket = new ServerSocket();
-      Socket socket = serverSocket.accept(); // Wait for connection from client.
+      ServerSocket serverSocket = new ServerSocket(); // try-with-resources to automatically clean up ServerSocket
     ) {
+      serverSocket.setReuseAddress(true);
+      serverSocket.bind(new InetSocketAddress(4221));
+      Socket socket = serverSocket.accept(); // Wait for connection from client.
       System.out.println("accepted new connection");
 
       // Since the tester restarts program quite often, setting SO_REUSEADDR
       // ensures that we don't run into 'Address already in use' errors
-      serverSocket.setReuseAddress(true);
-      serverSocket.bind(new InetSocketAddress(4221));
+
 
       // DataInputStream dataInStream = new DataInputStream(socket.getInputStream());
       // String stringData = dataInStream.readUTF();
@@ -36,7 +37,7 @@ public class Main {
       // dataOutStream.flush();
 
       socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
-      
+      socket.close();
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
     }
