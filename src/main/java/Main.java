@@ -65,6 +65,10 @@ public class Main {
       }
       String[] pathStrings = requestLineParts[1].split("/");
 
+      System.out.printf("requestLineParts: %s\n", requestLineParts[0]);
+      System.out.printf("requestLineParts: %s\n", requestLineParts[1]);
+      System.out.printf("requestLineParts: %s\n", requestLineParts[2]);
+
       if ("GET".equals(requestLineParts[0])) {
         if (pathStrings.length == 0) { // if original path was "/"
           socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
