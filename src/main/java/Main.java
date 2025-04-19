@@ -34,7 +34,7 @@ public class Main {
 
         String stringData = socket.getInputStream().readAllBytes().toString();
 
-        System.out.println(stringData);
+        System.out.printf("stringData: %s", stringData);
 
         socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
         socket.close();
