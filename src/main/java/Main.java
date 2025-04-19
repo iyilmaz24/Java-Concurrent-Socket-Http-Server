@@ -45,6 +45,7 @@ public class Main {
             else {
               socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
             }
+            break;
           }
         }
 
