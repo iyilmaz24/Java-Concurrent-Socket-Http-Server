@@ -5,16 +5,16 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Main {
+  private static final String Protocol = "HTTP/1.1";
+  private static final String CRLF = "\r\n";
 
+  private static final String RespOK = "200 OK";
+  private static final String RespNotFound = "404 Not Found";
   public static void main(String[] args) {
-    final String Protocol = "HTTP/1.1";
-    final String CRLF = "\r\n";
-  
-    final String RespOK = "200 OK";
-    final String RespNotFound = "404 Not Found";
-
     // Print statements for debugging - visible when running tests.
     System.out.println("Logs from your program will appear here!");
     
@@ -30,23 +30,17 @@ public class Main {
         Socket socket = serverSocket.accept(); // Wait for connection from client, gets automatically cleaned up at end
       ) {
         System.out.println("accepted new connection");
-        
+
         BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
 
-        String headerLine;
-        while((headerLine = bufferedReader.readLine()) != null && !headerLine.isEmpty()) {
-          System.out.printf("Received: %s\n", headerLine);
-          String[] headerStrings = headerLine.split(" ");
-          if ("GET".equals(headerStrings[0])) {
-            if ("/".equals(headerStrings[1])) {
-              socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
-            }
-            else {
-              socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
-            }
-            break;
-          }
+        List<String> requestStrings = new ArrayList<>();
+        String tempString;
+
+        while((tempString = bufferedReader.readLine()) != null && !tempString.isEmpty()) {
+          System.out.printf("Received: %s\n", tempString);
+          requestStrings.add(tempString);
         }
+        handleRequest(requestStrings, socket);
 
         socket.close();
       }
@@ -55,6 +49,26 @@ public class Main {
       System.out.println("IOException: " + e.getMessage());
     }
 
+  }
+
+  public static IOException handleRequest(List<String> requestParts, Socket socket) {
+    try {
+      for (String string : requestParts) {
+        String[] headerStrings = string.split(" ");
+
+        if ("GET".equals(headerStrings[0])) {
+          if ("/".equals(headerStrings[1])) {
+            socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
+          }
+        }
+        break;
+      }
+      socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
+
+    } catch (IOException e) {
+      return e;
+    }
+    return null;
   }
 
 }
