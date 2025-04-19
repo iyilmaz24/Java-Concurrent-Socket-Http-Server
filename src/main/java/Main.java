@@ -78,11 +78,11 @@ public class Main {
               System.out.printf("userAgentParts: %s\n", userAgentParts[1]);
               System.out.printf(String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, userAgentParts[1]));
               socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, userAgentParts[1]).getBytes(StandardCharsets.US_ASCII)));
-              }
             }
           }
         }
       }
+      
       
       socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII))); // return 404 Not Found
     } catch (IOException e) {
