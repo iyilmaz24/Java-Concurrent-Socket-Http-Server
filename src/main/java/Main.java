@@ -31,11 +31,10 @@ public class Main {
       ) {
         System.out.println("accepted new connection");
         
-        // DataInputStream dataIn = new DataInputStream(socket.getInputStream());
-        // String stringData = dataIn.readUTF();
-
         BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
         
+        System.out.printf("bufferedReader.readLine(): %s", bufferedReader.readLine());
+        System.out.printf("bufferedReader.readLine(): %s", bufferedReader.readLine());
         System.out.printf("bufferedReader.readLine(): %s", bufferedReader.readLine());
 
         socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
