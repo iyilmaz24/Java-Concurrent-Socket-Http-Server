@@ -14,6 +14,7 @@ public class Main {
     final String CRLF = "\r\n";
   
     final String RespOK = "200 OK";
+    final String RespNotFound = "404 Not Found";
 
     // Print statements for debugging - visible when running tests.
     System.out.println("Logs from your program will appear here!");
@@ -32,13 +33,21 @@ public class Main {
         System.out.println("accepted new connection");
         
         BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-        
-        System.out.printf("bufferedReader.readLine(): %s\n", bufferedReader.readLine());
-        System.out.printf("bufferedReader.readLine(): %s\n", bufferedReader.readLine());
-        System.out.printf("bufferedReader.readLine(): %s\n", bufferedReader.readLine());
-        System.out.printf("bufferedReader.readLine(): %s\n", bufferedReader.readLine());
 
-        socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
+        String headerLine;
+        while((headerLine = bufferedReader.readLine()) != null && !headerLine.isEmpty()) {
+          String[] headerStrings = headerLine.split(" ");
+          if (headerStrings[0] == "GET") {
+            if (headerStrings[1] == "/") {
+              socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
+            }
+            else {
+              socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
+            }
+          }
+        }
+
+        
         socket.close();
       }
 
