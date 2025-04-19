@@ -14,6 +14,9 @@ public class Main {
 
   private static final String RespOK = "200 OK";
   private static final String RespNotFound = "404 Not Found";
+
+  private static final String ContentTypeLength = "Content-Type: text/plain\r\nContent-Length: ";
+  
   public static void main(String[] args) {
     // Print statements for debugging - visible when running tests.
     System.out.println("Logs from your program will appear here!");
@@ -60,6 +63,12 @@ public class Main {
           if ("/".equals(headerStrings[1])) {
             socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
           }
+
+          String[] pathStrings = headerStrings[1].split("/");
+          if ("echo".equals(pathStrings[0])) {
+            socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[1].length(), CRLF, CRLF, pathStrings[1]).getBytes(StandardCharsets.US_ASCII)));
+          }
+          
         }
         break;
       }
