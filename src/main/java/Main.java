@@ -1,5 +1,7 @@
+import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -32,9 +34,9 @@ public class Main {
         // DataInputStream dataIn = new DataInputStream(socket.getInputStream());
         // String stringData = dataIn.readUTF();
 
-        String stringData = socket.getInputStream().readAllBytes().toString();
-
-        System.out.printf("stringData: %s", stringData);
+        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+        
+        System.out.printf("bufferedReader.readLine(): %s", bufferedReader.readLine());
 
         socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
         socket.close();
