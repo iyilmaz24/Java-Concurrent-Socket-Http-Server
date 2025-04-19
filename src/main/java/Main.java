@@ -80,6 +80,7 @@ public class Main {
         }
         else if ("user-agent".equals(pathStrings[1])) {
           for(String header : requestHeaders) {
+            System.out.printf("header: %s\n", header);
             if(header.contains("User-Agent:")) {
               String[] userAgentParts = header.split(" ");
               System.out.printf(String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, userAgentParts[1]));
@@ -89,8 +90,7 @@ public class Main {
         }
       }
       
-      // socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII))); // return 404 Not Found
-
+      socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII))); // return 404 Not Found
     } catch (IOException e) {
       return e;
     }
