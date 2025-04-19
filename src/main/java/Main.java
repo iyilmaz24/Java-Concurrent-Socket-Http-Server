@@ -57,6 +57,8 @@ public class Main {
   public static IOException handleRequest(List<String> requestParts, Socket socket) {
     try {
       String[] requestLineParts = requestParts.get(0).split(" ");
+
+      System.out.printf("requestParts.get(1): %s\n", requestParts.get(1));
       String[] requestHeaders = requestParts.get(1).split(" ");
 
       String requestBody = null;
