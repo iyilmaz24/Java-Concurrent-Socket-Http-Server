@@ -60,30 +60,28 @@ public class Main {
       String[] pathStrings = requestLineParts[1].split("/");
 
       if ("GET".equals(requestLineParts[0])) {
-        // System.out.printf("pathStrings: %s\n", pathStrings[0]);
-        // System.out.printf("pathStrings: %s\n", pathStrings[1]);
-        if (pathStrings.length == 0) { // if original path was "/"
-          socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
+        byte[] byteMessage;
+        if (pathStrings.length == 0) { // if original path was "/", respond 200 OK
+          byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+          socket.getOutputStream().write((byteMessage));
         }
-        else if ("echo".equals(pathStrings[1])) { // return * after /echo/* as the response body
-          socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII)));
+        else if ("echo".equals(pathStrings[1])) { // send response where * after /echo/* is the body
+          byteMessage = String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII);
+          socket.getOutputStream().write((byteMessage));
         }
-        else if ("user-agent".equals(pathStrings[1])) {
+        else if ("user-agent".equals(pathStrings[1])) { // send response where the User-Agent header's content is the body
           String currentHeader;
           for(int i = 1; i < requestParts.size(); i++) { // init "i" as 1 to skip to header section
             currentHeader = requestParts.get(i);
             if(currentHeader.contains("User-Agent:")) {
               String[] userAgentParts = requestParts.get(i).split(" ");
-              System.out.printf("userAgentParts: %s\n", userAgentParts[0]);
-              System.out.printf("userAgentParts: %s\n", userAgentParts[1]);
-              System.out.printf(String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, userAgentParts[1].length(), CRLF, CRLF, userAgentParts[1]));
-              socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, userAgentParts[1].length(), CRLF, CRLF, userAgentParts[1]).getBytes(StandardCharsets.US_ASCII)));
+              byteMessage = String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, userAgentParts[1].length(), CRLF, CRLF, userAgentParts[1]).getBytes(StandardCharsets.US_ASCII);
+              socket.getOutputStream().write((byteMessage));
             }
           }
         }
       }
-      
-      
+    
       socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII))); // return 404 Not Found
     } catch (IOException e) {
       return e;
