@@ -57,7 +57,7 @@ public class Main {
   public static IOException handleRequest(List<String> requestParts, Socket socket) {
     try {
       String[] requestLineParts = requestParts.get(0).split(" ");
-      String[] requestHeaderParts = requestParts.get(1).split(" ");
+      String[] requestHeaders = requestParts.get(1).split(" ");
 
       String requestBody = null;
       if (requestParts.size() > 2) {
@@ -73,7 +73,12 @@ public class Main {
           socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII)));
         }
         else if ("user-agent".equals(pathStrings[1])) {
-          socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII)));
+          for(String header : requestHeaders) {
+            if(header.contains("User-Agent:")) {
+              String[] userAgentParts = header.split(" ");
+              socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, userAgentParts[1]).getBytes(StandardCharsets.US_ASCII)));
+            }
+          }
         }
       }
       
