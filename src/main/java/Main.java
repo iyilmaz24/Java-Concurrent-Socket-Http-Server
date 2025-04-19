@@ -68,7 +68,7 @@ public class Main {
           System.out.printf("path: %s", pathStrings[0]);
           System.out.printf("path: %s", pathStrings[1]);
           System.out.printf("path: %s", pathStrings[2]);
-          if ("echo".equals(pathStrings[0])) {
+          if ("echo".equals(pathStrings[1])) {
             System.out.printf("Sending: %s", String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[1].length(), CRLF, CRLF, pathStrings[1]).getBytes(StandardCharsets.US_ASCII));
             socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[1].length(), CRLF, CRLF, pathStrings[1]).getBytes(StandardCharsets.US_ASCII)));
           }
