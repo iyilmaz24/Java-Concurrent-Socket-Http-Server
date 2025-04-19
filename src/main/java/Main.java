@@ -83,6 +83,8 @@ public class Main {
             System.out.printf("header: %s\n", header);
             if(header.contains("User-Agent:")) {
               String[] userAgentParts = header.split(" ");
+              System.out.printf("userAgentParts: %s\n", userAgentParts[0]);
+              System.out.printf("userAgentParts: %s\n", userAgentParts[1]);
               System.out.printf(String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, userAgentParts[1]));
               socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, userAgentParts[1]).getBytes(StandardCharsets.US_ASCII)));
             }
