@@ -38,7 +38,7 @@ public class Main {
           System.out.printf("Received: %s\n", headerLine);
           String[] headerStrings = headerLine.split(" ");
           if ("GET".equals(headerStrings[0])) {
-            if (headerStrings[1] == "/") {
+            if ("/".equals(headerStrings[1])) {
               socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
             }
             else {
