@@ -59,6 +59,8 @@ public class Main {
       String[] requestLineParts = requestParts.get(0).split(" ");
 
       System.out.printf("requestParts.get(1): %s\n", requestParts.get(1));
+      System.out.printf("requestParts.get(1): %s\n", requestParts.get(2));
+      System.out.printf("requestParts.get(1): %s\n", requestParts.get(3));
       String[] requestHeaders = requestParts.get(1).split(" ");
 
       String requestBody = null;
