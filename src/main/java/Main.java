@@ -1,5 +1,4 @@
 import java.io.BufferedReader;
-import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
@@ -38,7 +37,7 @@ public class Main {
         while((headerLine = bufferedReader.readLine()) != null && !headerLine.isEmpty()) {
           System.out.printf("Received: %s\n", headerLine);
           String[] headerStrings = headerLine.split(" ");
-          if (headerStrings[0] == "GET") {
+          if ("GET".equals(headerStrings[0])) {
             if (headerStrings[1] == "/") {
               socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
             }
@@ -49,7 +48,6 @@ public class Main {
           }
         }
 
-        
         socket.close();
       }
 
@@ -58,4 +56,5 @@ public class Main {
     }
 
   }
+
 }
