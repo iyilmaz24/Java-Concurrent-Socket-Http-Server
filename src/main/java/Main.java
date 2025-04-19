@@ -29,8 +29,10 @@ public class Main {
       ) {
         System.out.println("accepted new connection");
         
-        DataInputStream dataIn = new DataInputStream(socket.getInputStream());
-        String stringData = dataIn.readUTF();
+        // DataInputStream dataIn = new DataInputStream(socket.getInputStream());
+        // String stringData = dataIn.readUTF();
+
+        String stringData = socket.getInputStream().readAllBytes().toString();
 
         System.out.println(stringData);
 
