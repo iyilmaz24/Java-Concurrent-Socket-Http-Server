@@ -1,3 +1,4 @@
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -14,7 +15,6 @@ public class Main {
 
     // Print statements for debugging - visible when running tests.
     System.out.println("Logs from your program will appear here!");
-
     
     try (
       ServerSocket serverSocket = new ServerSocket(); // try-with-resources to automatically clean up ServerSocket
@@ -27,18 +27,15 @@ public class Main {
       try (
         Socket socket = serverSocket.accept(); // Wait for connection from client, gets automatically cleaned up at end
       ) {
-        // DataInputStream dataInStream = new DataInputStream(socket.getInputStream());
-        // String stringData = dataInStream.readUTF();
-        // System.out.printf("**MESSAGE: %s", stringData);
+        System.out.println("accepted new connection");
+        
+        DataInputStream dataIn = new DataInputStream(socket.getInputStream());
+        String stringData = dataIn.readUTF();
 
-        // DataOutputStream dataOutStream = new DataOutputStream(socket.getOutputStream());
-        // dataOutStream.writeUTF(String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF));
-        // dataOutStream.flush();
+        System.out.println(stringData);
 
         socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
         socket.close();
-      
-        System.out.println("accepted new connection");
       }
 
     } catch (IOException e) {
