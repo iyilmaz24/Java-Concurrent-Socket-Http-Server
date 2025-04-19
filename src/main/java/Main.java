@@ -36,6 +36,7 @@ public class Main {
 
         String headerLine;
         while((headerLine = bufferedReader.readLine()) != null && !headerLine.isEmpty()) {
+          System.out.printf("Received: %s\n", headerLine);
           String[] headerStrings = headerLine.split(" ");
           if (headerStrings[0] == "GET") {
             if (headerStrings[1] == "/") {
