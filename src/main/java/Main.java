@@ -70,6 +70,8 @@ public class Main {
       System.out.printf("requestLineParts: %s\n", requestLineParts[2]);
 
       if ("GET".equals(requestLineParts[0])) {
+        System.out.printf("pathStrings: %s\n", pathStrings[0]);
+        System.out.printf("pathStrings: %s\n", pathStrings[1]);
         if (pathStrings.length == 0) { // if original path was "/"
           socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
         }
