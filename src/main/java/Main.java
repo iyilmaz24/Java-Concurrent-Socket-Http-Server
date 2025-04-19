@@ -56,24 +56,28 @@ public class Main {
 
   public static IOException handleRequest(List<String> requestParts, Socket socket) {
     try {
-      for (String string : requestParts) {
-        String[] headerStrings = string.split(" ");
+      String[] requestLineParts = requestParts.get(0).split(" ");
+      String[] requestHeaderParts = requestParts.get(1).split(" ");
 
-        if ("GET".equals(headerStrings[0])) {
-          if ("/".equals(headerStrings[1])) {
-            socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
-          }
-
-          String[] pathStrings = headerStrings[1].split("/");
-          if ("echo".equals(pathStrings[1])) {
-            System.out.printf("Sending: %s", String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[1].length(), CRLF, CRLF, pathStrings[1]).getBytes(StandardCharsets.US_ASCII));
-            socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII)));
-          }
-          
-        }
-        break;
+      String requestBody = null;
+      if (requestParts.size() > 2) {
+        requestParts.get(2);
       }
-      socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
+      String[] pathStrings = requestLineParts[1].split("/");
+
+      if ("GET".equals(requestLineParts[0])) {
+        if (pathStrings.length == 0) { // if original path was "/"
+          socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII)));
+        }
+        else if ("echo".equals(pathStrings[1])) { 
+          socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII)));
+        }
+        else if ("user-agent".equals(pathStrings[1])) {
+          socket.getOutputStream().write((String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII)));
+        }
+      }
+      
+      socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII))); // return 404 Not Found
 
     } catch (IOException e) {
       return e;
