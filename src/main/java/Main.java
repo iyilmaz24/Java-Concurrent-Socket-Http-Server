@@ -1,25 +1,22 @@
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
-public class Main {
-  private static final String Protocol = "HTTP/1.1";
-  private static final String CRLF = "\r\n";
-
-  private static final String RespOK = "200 OK";
-  private static final String RespNotFound = "404 Not Found";
-
-  private static final String ContentTypeLength = "Content-Type: text/plain\r\nContent-Length: ";
-  
+public class Main {  
   public static void main(String[] args) {
     // Print statements for debugging - visible when running tests.
-    System.out.println("Logs from your program will appear here!");
+    System.out.println("Server starting...");
     
     try (
       ServerSocket serverSocket = new ServerSocket(); // try-with-resources to automatically clean up ServerSocket
@@ -29,33 +26,63 @@ public class Main {
       serverSocket.setReuseAddress(true);
       serverSocket.bind(new InetSocketAddress(4221));
 
-      try (
-        Socket socket = serverSocket.accept(); // Wait for connection from client, gets automatically cleaned up at end
-      ) {
-        System.out.println("accepted new connection");
+      ThreadFactory virtualThreadFactory = Thread.ofVirtual() 
+        .name("worker-", 1)
+        .uncaughtExceptionHandler((t, e) -> System.err.printf("Error in %s: %s%n", t, e))
+        .factory(); // create virtual thread factory
 
-        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-
-        List<String> requestStrings = new ArrayList<>();
-        String tempString;
-
-        while((tempString = bufferedReader.readLine()) != null && !tempString.isEmpty()) {
-          System.out.printf("Received: %s\n", tempString);
-          requestStrings.add(tempString);
-        }
-        handleRequest(requestStrings, socket);
-
-        socket.close();
+      ExecutorService executor = Executors.newThreadPerTaskExecutor(virtualThreadFactory);
+      
+      while (true) {
+        Socket socket = serverSocket.accept(); 
+        executor.submit(() -> {
+          try {
+            handleConnection(socket);
+          } catch (IOException e) {
+            System.err.println("Connection error: " + e.getMessage());
+          }
+        });
       }
-
+      
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
     }
 
   }
 
-  public static IOException handleRequest(List<String> requestParts, Socket socket) {
-    try {
+  private static final String Protocol = "HTTP/1.1";
+  private static final String CRLF = "\r\n";
+
+  private static final String RespOK = "200 OK";
+  private static final String RespNotFound = "404 Not Found";
+
+  private static final String ContentTypeLength = "Content-Type: text/plain\r\nContent-Length: ";
+
+  public static void handleConnection(Socket socket) throws IOException {
+    try (
+      InputStream socketInStream = socket.getInputStream();
+      InputStreamReader socketInReader = new InputStreamReader(socketInStream, StandardCharsets.UTF_8);
+      BufferedReader socketBufferedReader = new BufferedReader(socketInReader);
+    ) {
+      System.out.println("accepted new connection");
+      List<String> requestStrings = new ArrayList<>();
+      String tempString;
+  
+      while((tempString = socketBufferedReader.readLine()) != null && !tempString.isEmpty()) {
+        System.out.printf("Received: %s\n", tempString);
+        requestStrings.add(tempString);
+      }
+      handleRequest(requestStrings, socket);
+
+      socket.close(); 
+    }
+  }
+
+  public static void handleRequest(List<String> requestParts, Socket socket) throws IOException {
+    try (
+      OutputStream socketOutStream = socket.getOutputStream();
+    ) {
+      boolean responseMade = false;
       String[] requestLineParts = requestParts.get(0).split(" ");
       String[] pathStrings = requestLineParts[1].split("/");
 
@@ -63,11 +90,13 @@ public class Main {
         byte[] byteMessage;
         if (pathStrings.length == 0) { // if original path was "/", respond 200 OK
           byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
-          socket.getOutputStream().write((byteMessage));
+          socketOutStream.write((byteMessage));
+          responseMade = true;
         }
         else if ("echo".equals(pathStrings[1])) { // send response where * after /echo/* is the body
           byteMessage = String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII);
-          socket.getOutputStream().write((byteMessage));
+          socketOutStream.write((byteMessage));
+          responseMade = true;
         }
         else if ("user-agent".equals(pathStrings[1])) { // send response where the User-Agent header's content is the body
           String currentHeader;
@@ -76,17 +105,16 @@ public class Main {
             if(currentHeader.contains("User-Agent:")) {
               String[] userAgentParts = requestParts.get(i).split(" ");
               byteMessage = String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, userAgentParts[1].length(), CRLF, CRLF, userAgentParts[1]).getBytes(StandardCharsets.US_ASCII);
-              socket.getOutputStream().write((byteMessage));
+              socketOutStream.write((byteMessage));
+              responseMade = true;
             }
           }
         }
       }
-    
-      socket.getOutputStream().write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII))); // return 404 Not Found
-    } catch (IOException e) {
-      return e;
+      if (!responseMade) {
+        socketOutStream.write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII))); // return 404 Not Found
+      }
     }
-    return null;
   }
 
 }
