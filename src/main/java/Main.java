@@ -7,6 +7,9 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -14,9 +17,18 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 
 public class Main {  
+
+  private static Path ServerFileDirectory = null;
   public static void main(String[] args) {
-    // Print statements for debugging - visible when running tests.
-    System.out.println("Server starting...");
+    System.out.println("Server starting..."); // Print statements for debugging - visible when running tests.
+
+    if(args.length > 0 && "--directory".equals(args[0])) {
+      ServerFileDirectory = Paths.get(args[1]);
+
+      if (!Files.exists(ServerFileDirectory) || !Files.isDirectory(ServerFileDirectory)) {
+        System.err.println("**Error with file path " + args[1]);
+      }
+    }
     
     try (
       ServerSocket serverSocket = new ServerSocket(); // try-with-resources to automatically clean up ServerSocket
@@ -28,7 +40,7 @@ public class Main {
 
       ThreadFactory virtualThreadFactory = Thread.ofVirtual() 
         .name("worker-", 1)
-        .uncaughtExceptionHandler((t, e) -> System.err.printf("Error in %s: %s%n", t, e))
+        .uncaughtExceptionHandler((t, e) -> System.err.printf("***Error in %s: %s%n", t, e))
         .factory(); // create virtual thread factory
 
       ExecutorService executor = Executors.newThreadPerTaskExecutor(virtualThreadFactory);
@@ -39,26 +51,20 @@ public class Main {
           try {
             handleConnection(socket);
           } catch (IOException e) {
-            System.err.println("Connection error: " + e.getMessage());
+            System.err.println("**Connection error: " + e.getMessage());
+          } catch (Exception e) {
+            System.err.println("**Unexpected error: " + e.getMessage());
           }
         });
       }
       
     } catch (IOException e) {
-      System.out.println("IOException: " + e.getMessage());
+      System.out.println("**IOException: " + e.getMessage());
     }
 
   }
 
-  private static final String Protocol = "HTTP/1.1";
-  private static final String CRLF = "\r\n";
-
-  private static final String RespOK = "200 OK";
-  private static final String RespNotFound = "404 Not Found";
-
-  private static final String ContentTypeLength = "Content-Type: text/plain\r\nContent-Length: ";
-
-  public static void handleConnection(Socket socket) throws IOException {
+  public static void handleConnection(Socket socket) throws IOException, Exception {
     try (
       InputStream socketInStream = socket.getInputStream();
       InputStreamReader socketInReader = new InputStreamReader(socketInStream, StandardCharsets.UTF_8);
@@ -69,7 +75,7 @@ public class Main {
       String tempString;
   
       while((tempString = socketBufferedReader.readLine()) != null && !tempString.isEmpty()) {
-        System.out.printf("Received: %s\n", tempString);
+        // System.out.printf("Received: %s\n", tempString);
         requestStrings.add(tempString);
       }
       handleRequest(requestStrings, socket);
@@ -78,7 +84,19 @@ public class Main {
     }
   }
 
-  public static void handleRequest(List<String> requestParts, Socket socket) throws IOException {
+  private static final String Protocol = "HTTP/1.1";
+  private static final String CRLF = "\r\n";
+
+  private static final String RespOK = "200 OK";
+  private static final String RespNotFound = "404 Not Found";
+
+  private static final String ContentType = "Content-Type: ";
+  private static final String TextContent = "plain/text";
+  private static final String AppOctetStreamContent = "application/octet-stream";
+
+  private static final String ContentLength = "Content-Length: ";
+
+  public static void handleRequest(List<String> requestParts, Socket socket) throws IOException, Exception {
     try (
       OutputStream socketOutStream = socket.getOutputStream();
     ) {
@@ -93,8 +111,8 @@ public class Main {
           socketOutStream.write((byteMessage));
           responseMade = true;
         }
-        else if ("echo".equals(pathStrings[1])) { // send response where * after /echo/* is the body
-          byteMessage = String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII);
+        else if ("echo".equals(pathStrings[1])) { // send response where * after /echo/* is the body 
+          byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
           responseMade = true;
         }
@@ -104,10 +122,19 @@ public class Main {
             currentHeader = requestParts.get(i);
             if(currentHeader.contains("User-Agent:")) {
               String[] userAgentParts = requestParts.get(i).split(" ");
-              byteMessage = String.format("%s %s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentTypeLength, userAgentParts[1].length(), CRLF, CRLF, userAgentParts[1]).getBytes(StandardCharsets.US_ASCII);
+              byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, userAgentParts[1].length(), CRLF, CRLF, userAgentParts[1]).getBytes(StandardCharsets.US_ASCII);
               socketOutStream.write((byteMessage));
               responseMade = true;
             }
+          }
+        }
+        else if ("files".equals(pathStrings[1])) {
+          Path requestedFile = ServerFileDirectory.resolve(pathStrings[2]);
+          if (Files.exists(requestedFile) && Files.isRegularFile(requestedFile) && Files.isReadable(requestedFile)) { // check file exists, isn't directory or link, and is readable
+            byte[] fileBytes = Files.readAllBytes(requestedFile);
+            byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF, ContentLength, fileBytes.length, CRLF, CRLF, fileBytes).getBytes(StandardCharsets.US_ASCII);
+            socketOutStream.write((byteMessage)); 
+            responseMade = true;
           }
         }
       }
