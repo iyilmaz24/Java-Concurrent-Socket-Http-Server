@@ -91,7 +91,7 @@ public class Main {
   private static final String RespNotFound = "404 Not Found";
 
   private static final String ContentType = "Content-Type: ";
-  private static final String TextContent = "plain/text";
+  private static final String TextContent = "text/plain";
   private static final String AppOctetStreamContent = "application/octet-stream";
 
   private static final String ContentLength = "Content-Length: ";
@@ -132,8 +132,9 @@ public class Main {
           Path requestedFile = ServerFileDirectory.resolve(pathStrings[2]);
           if (Files.exists(requestedFile) && Files.isRegularFile(requestedFile) && Files.isReadable(requestedFile)) { // check file exists, isn't directory or link, and is readable
             byte[] fileBytes = Files.readAllBytes(requestedFile);
-            byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF, ContentLength, fileBytes.length, CRLF, CRLF, fileBytes).getBytes(StandardCharsets.US_ASCII);
+            byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF, ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
             socketOutStream.write((byteMessage)); 
+            socketOutStream.write(fileBytes);
             responseMade = true;
           }
         }
