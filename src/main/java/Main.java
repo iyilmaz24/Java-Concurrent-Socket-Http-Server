@@ -22,11 +22,11 @@ public class Main {
   public static void main(String[] args) {
     System.out.println("Server starting..."); // Print statements for debugging - visible when running tests.
 
-    if(args.length > 0 && "--directory".equals(args[0])) {
+    if(args.length > 0 && "--directory".equals(args[0])) { // if "--directory {fileDirectoryPath}" cmd line args are supplied
       ServerFileDirectory = Paths.get(args[1]);
 
       if (!Files.exists(ServerFileDirectory) || !Files.isDirectory(ServerFileDirectory)) {
-        System.err.println("**Error with file path " + args[1]);
+        System.err.println("**Error with file directory path " + args[1]);
       }
     }
     
@@ -41,7 +41,7 @@ public class Main {
       ThreadFactory virtualThreadFactory = Thread.ofVirtual() 
         .name("worker-", 1)
         .uncaughtExceptionHandler((t, e) -> System.err.printf("***Error in %s: %s%n", t, e))
-        .factory(); // create virtual thread factory
+        .factory(); // use virtual thread factory for scalable handling of concurrent, blocking socket I/O
 
       ExecutorService executor = Executors.newThreadPerTaskExecutor(virtualThreadFactory);
       
@@ -106,17 +106,17 @@ public class Main {
 
       if ("GET".equals(requestLineParts[0])) {
         byte[] byteMessage;
-        if (pathStrings.length == 0) { // if original path was "/", respond 200 OK
+        if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
           byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
           responseMade = true;
         }
-        else if ("echo".equals(pathStrings[1])) { // send response where * after /echo/* is the body 
+        else if ("echo".equals(pathStrings[1])) { // GET "/echo/{message}" - send response where message is the body 
           byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
           responseMade = true;
         }
-        else if ("user-agent".equals(pathStrings[1])) { // send response where the User-Agent header's content is the body
+        else if ("user-agent".equals(pathStrings[1])) { // GET "/user-agent" - send response where the User-Agent header's content is the body
           String currentHeader;
           for(int i = 1; i < requestParts.size(); i++) { // init "i" as 1 to skip to header section
             currentHeader = requestParts.get(i);
@@ -128,13 +128,13 @@ public class Main {
             }
           }
         }
-        else if ("files".equals(pathStrings[1])) {
+        else if ("files".equals(pathStrings[1])) { // GET "files/{filePath}" - send response with requested file as body
           Path requestedFile = ServerFileDirectory.resolve(pathStrings[2]);
           if (Files.exists(requestedFile) && Files.isRegularFile(requestedFile) && Files.isReadable(requestedFile)) { // check file exists, isn't directory or link, and is readable
             byte[] fileBytes = Files.readAllBytes(requestedFile);
             byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF, ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
-            socketOutStream.write((byteMessage)); 
-            socketOutStream.write(fileBytes);
+            socketOutStream.write((byteMessage));
+            socketOutStream.write(fileBytes); // write file's bytes seperately (byte[] too large for String.format)
             responseMade = true;
           }
         }
