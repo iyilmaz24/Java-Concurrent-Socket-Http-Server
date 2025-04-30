@@ -177,6 +177,9 @@ public class Main {
         }
         byte[] requestBody = new byte[bodyLength];
         int bytesRead = socketInStream.readNBytes(requestBody, 0, bodyLength);
+
+        System.out.printf("bytesRead: %d", bytesRead);
+        System.out.printf("bodyLength: %d", bodyLength);
         if (bytesRead < bodyLength) {
           System.err.printf("***ERROR: Only read %d / %d bytes specified", bytesRead, bodyLength);
           sendHttpErrorResponse(socketOutStream, RespInternalErr);
