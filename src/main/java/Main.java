@@ -162,6 +162,7 @@ public class Main {
             String[] headerParts = requestParts.get(i).split(" ");
             try {
               bodyLength = Integer.parseInt(headerParts[1]);
+              System.out.println(headerParts[1]);
               if (bodyLength < 0 || bodyLength > 10_000_000) {
                 System.err.println("***ERROR: Invalid Content-Length header, size of " + bodyLength);
                 sendHttpErrorResponse(socketOutStream, RespInternalErr);
