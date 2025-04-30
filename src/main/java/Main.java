@@ -26,7 +26,7 @@ public class Main {
       ServerFileDirectory = Paths.get(args[1]);
 
       if (!Files.exists(ServerFileDirectory) || !Files.isDirectory(ServerFileDirectory)) {
-        System.err.println("**Error with file directory path " + args[1]);
+        System.err.println("***ERROR: Issue with file directory path " + args[1]);
       }
     }
     
@@ -40,7 +40,7 @@ public class Main {
 
       ThreadFactory virtualThreadFactory = Thread.ofVirtual() 
         .name("worker-", 1)
-        .uncaughtExceptionHandler((t, e) -> System.err.printf("***Error in %s: %s%n", t, e))
+        .uncaughtExceptionHandler((t, e) -> System.err.printf("***ERROR: Issue in %s: %s%n", t, e))
         .factory(); // use virtual thread factory for scalable handling of concurrent, blocking socket I/O
 
       ExecutorService executor = Executors.newThreadPerTaskExecutor(virtualThreadFactory);
@@ -51,15 +51,15 @@ public class Main {
           try {
             handleConnection(socket);
           } catch (IOException e) {
-            System.err.println("**Connection error: " + e.getMessage());
+            System.err.println("***ERROR: " + e.getMessage());
           } catch (Exception e) {
-            System.err.println("**Unexpected error: " + e.getMessage());
+            System.err.println("***ERROR: unexpected error - " + e.getMessage());
           }
         });
       }
       
     } catch (IOException e) {
-      System.out.println("**IOException: " + e.getMessage());
+      System.out.println("***ERROR: IOException - " + e.getMessage());
     }
 
   }
@@ -78,7 +78,7 @@ public class Main {
         // System.out.printf("Received: %s\n", tempString);
         requestStrings.add(tempString);
       }
-      handleRequest(requestStrings, socket);
+      handleRequest(requestStrings, socket, socketInStream);
 
       socket.close(); 
     }
@@ -89,6 +89,8 @@ public class Main {
 
   private static final String RespOK = "200 OK";
   private static final String RespNotFound = "404 Not Found";
+  private static final String RespForbidden= "403 Forbidden";
+  private static final String RespInternalErr = "500 Internal Server Error";
 
   private static final String ContentType = "Content-Type: ";
   private static final String TextContent = "text/plain";
@@ -96,16 +98,16 @@ public class Main {
 
   private static final String ContentLength = "Content-Length: ";
 
-  public static void handleRequest(List<String> requestParts, Socket socket) throws IOException, Exception {
+  public static void handleRequest(List<String> requestParts, Socket socket, InputStream socketInStream) throws IOException, Exception {
     try (
       OutputStream socketOutStream = socket.getOutputStream();
     ) {
       boolean responseMade = false;
       String[] requestLineParts = requestParts.get(0).split(" ");
       String[] pathStrings = requestLineParts[1].split("/");
-
+      byte[] byteMessage;
+    
       if ("GET".equals(requestLineParts[0])) {
-        byte[] byteMessage;
         if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
           byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
@@ -129,7 +131,13 @@ public class Main {
           }
         }
         else if ("files".equals(pathStrings[1])) { // GET "files/{filePath}" - send response with requested file as body
+          if (ServerFileDirectory == null) {
+            System.err.println("***ERROR (POST files/{fileName}): Request to interact with null ServerFileDirectory, not initialized");
+            sendHttpErrorResponse(socketOutStream, RespInternalErr);
+            responseMade = true;
+          }
           Path requestedFile = ServerFileDirectory.resolve(pathStrings[2]);
+
           if (Files.exists(requestedFile) && Files.isRegularFile(requestedFile) && Files.isReadable(requestedFile)) { // check file exists, isn't directory or link, and is readable
             byte[] fileBytes = Files.readAllBytes(requestedFile);
             byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF, ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
@@ -138,11 +146,69 @@ public class Main {
             responseMade = true;
           }
         }
+      } else if ("POST".equals(requestLineParts[0])) {
+        if ("files".equals(pathStrings[1])) { // POST "files/{fileName}" - create file with name as fileName and content as the request's body
+
+        if (ServerFileDirectory == null) {
+          System.err.println("***ERROR (POST files/{fileName}): Request to interact with null ServerFileDirectory, not initialized");
+          sendHttpErrorResponse(socketOutStream, RespInternalErr);
+          responseMade = true;
+        }
+        int bodyLength = 0; String bodyType; String currentHeader;
+
+        for(int i = 1; i < requestParts.size(); i++) { // init "i" as 1 to skip to header section
+          currentHeader = requestParts.get(i);
+          if(currentHeader.contains("Content-Length:")) {
+            String[] headerParts = requestParts.get(i).split(" ");
+            try {
+              bodyLength = Integer.parseInt(headerParts[1]);
+              if (bodyLength < 0 || bodyLength > 10_000_000) {
+                System.err.println("***ERROR: Invalid Content-Length header, size of " + bodyLength);
+                sendHttpErrorResponse(socketOutStream, RespInternalErr);
+                responseMade = true;
+              }
+            } catch (NumberFormatException e) {
+              bodyLength = 0;
+            }
+          } else if (currentHeader.contains("Content-Type:")) {
+            String[] headerParts = requestParts.get(i).split(" ");
+            bodyType = headerParts[1];
+          }
+        }
+        byte[] requestBody = new byte[bodyLength];
+        int bytesRead = socketInStream.readNBytes(requestBody, 0, bodyLength);
+        if (bytesRead < bodyLength) {
+          System.err.printf("***ERROR: Only read %d / %d bytes specified", bytesRead, bodyLength);
+          sendHttpErrorResponse(socketOutStream, RespInternalErr);
+          responseMade = true;
+        }
+        
+        Path filePath = ServerFileDirectory.resolve(pathStrings[2]);
+        Path normalizedPath = filePath.normalize();
+        if (!normalizedPath.startsWith(ServerFileDirectory)) {
+          System.err.println("***ERROR: HTTP request attempts to access file outside of server's file directory");
+          sendHttpErrorResponse(socketOutStream, RespForbidden); // return 403 Forbidden
+          responseMade = true;
+          return;
+        } else {
+          Files.write(filePath, requestBody);
+        }
+        
+        byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+        socketOutStream.write((byteMessage));
+        responseMade = true;
+        
+        }
       }
       if (!responseMade) {
-        socketOutStream.write((String.format("%s %s%s%s", Protocol, RespNotFound, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII))); // return 404 Not Found
+        sendHttpErrorResponse(socketOutStream, RespNotFound); // return 404 Not Found
       }
     }
   }
 
+  static void sendHttpErrorResponse(OutputStream socketOutStream, String httpErrorString) throws IOException {
+    socketOutStream.write(String.format("%s %s%s%s", Protocol, httpErrorString, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII));
+    return;
+  }
 }
+
