@@ -167,6 +167,7 @@ public class Main {
                 System.err.println("***ERROR: Invalid Content-Length header, size of " + bodyLength);
                 sendHttpErrorResponse(socketOutStream, RespInternalErr);
                 responseMade = true;
+                return;
               }
             } catch (NumberFormatException e) {
               bodyLength = 0;
