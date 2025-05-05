@@ -11,7 +11,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -67,20 +70,79 @@ public class Main {
   public static void handleConnection(Socket socket) throws IOException, Exception {
     try (
       InputStream socketInStream = socket.getInputStream();
-      InputStreamReader socketInReader = new InputStreamReader(socketInStream, StandardCharsets.UTF_8);
-      BufferedReader socketBufferedReader = new BufferedReader(socketInReader);
+      OutputStream socketOutStream = socket.getOutputStream();
     ) {
-      System.out.println("accepted new connection");
-      List<String> requestStrings = new ArrayList<>();
-      String tempString;
-  
-      while((tempString = socketBufferedReader.readLine()) != null && !tempString.isEmpty()) {
-        // System.out.printf("Received: %s\n", tempString);
-        requestStrings.add(tempString);
-      }
-      handleRequest(requestStrings, socket, socketInStream);
+      System.out.println("***INFO: Accepted new connection");
+      Map<String, String> headersMap = new HashMap<>();
+      int BUFFER_SIZE = 8192;   // size of chunk to read & process at once, stored in RAM - can't make too big
+      byte[] currentBytes = new byte[BUFFER_SIZE];
 
-      socket.close(); 
+      int readBytes;
+      int bytesInBuffer = 0;
+      int bytesProcessed = 0; 
+
+      byte[] currentHeaderBytes;
+      int currentHeaderLength;
+      boolean allHeadersConsumed = false;
+
+      byte[] partialBody = new byte[0];
+
+      // Example Request:
+          // POST /submit-form HTTP/1.1\r\n
+          // Host: mywebapp.com\r\n
+          // Content-Type: application/x-www-form-urlencoded\r\n
+          // Content-Length: 27\r\n
+          // \r\n
+          // name=John+Doe&age=30
+      
+      while(!allHeadersConsumed) {   // only process headers
+        readBytes = socketInStream.read(currentBytes, bytesInBuffer, BUFFER_SIZE - bytesInBuffer);
+        if (readBytes == -1) throw new IOException("Client disconnected prematurely"); 
+        bytesInBuffer += readBytes;
+
+        for(int i = 0; i < bytesInBuffer; i++) {  // process the bytes           
+          if(i > 0 && currentBytes[i] == '\n' && currentBytes[i-1] == '\r') {   // found CRLF
+
+            currentHeaderLength = i - 1 - bytesProcessed;
+            if (currentHeaderLength > 0) {
+              currentHeaderBytes = Arrays.copyOfRange(currentBytes, bytesProcessed, i-1);
+              String headerString = new String(currentHeaderBytes, 0, currentHeaderLength, StandardCharsets.US_ASCII);
+              int colonIndex = headerString.indexOf(":");
+              String headerName = headerString.substring(0, colonIndex);
+              String headerValue = headerString.substring(colonIndex + 1).trim();
+              headersMap.put(headerName.trim().toLowerCase(), headerValue);     // normalize the headerName for look-ups
+            }
+
+            bytesProcessed = i + 1;   // processed i / BUFFER_SIZE bytes so far
+
+            if (i > 2 && currentBytes[i-2] == '\n' && currentBytes[i-3] == '\r') {    // found double CRLF
+              allHeadersConsumed = true;
+              partialBody = Arrays.copyOfRange(currentBytes, bytesProcessed, bytesInBuffer);    // returns new array sized to number of bytes (.length is accurate)
+              break;
+            }
+          }
+        }
+
+        int unprocessedBytes = bytesInBuffer - bytesProcessed;
+        if (unprocessedBytes < 3) {    // minimum 3 bytes kept, for case where double CRLF was cut off, ex. [...\r\n\r] [\n...]
+          System.arraycopy(currentBytes, bytesInBuffer - 3, currentBytes, 0, 3);      // void System.arraycopy(Object src, int srcPos, Object dest, int destPos, int length)
+          bytesInBuffer = 3;
+        } else {
+          System.arraycopy(currentBytes, bytesProcessed, currentBytes, 0, unprocessedBytes);
+          bytesInBuffer = unprocessedBytes;    // the leftover bytes, ex. partial header at end of buffer
+        }
+        bytesProcessed = 0;
+      }
+
+      int remainingBodyLength;
+      try {
+        remainingBodyLength = Integer.parseInt(headersMap.getOrDefault("content-length", "0")) - partialBody.length;
+        if (remainingBodyLength < 0) remainingBodyLength = 0;
+      } catch (NumberFormatException e) {
+        remainingBodyLength = 0;
+      }
+      
+      handleRequest(headersMap, socket, socketInStream, socketOutStream, partialBody, remainingBodyLength);
     }
   }
 
@@ -98,10 +160,8 @@ public class Main {
 
   private static final String ContentLength = "Content-Length: ";
 
-  public static void handleRequest(List<String> requestParts, Socket socket, InputStream socketInStream) throws IOException, Exception {
-    try (
-      OutputStream socketOutStream = socket.getOutputStream();
-    ) {
+  public static void handleRequest(Map<String, String> headersMap, Socket socket, InputStream socketInStream, OutputStream socketOutStream, byte[] partialBody, int remainingBodyLength) throws IOException, Exception {
+    try {
       boolean responseMade = false;
       String[] requestLineParts = requestParts.get(0).split(" ");
       String[] pathStrings = requestLineParts[1].split("/");
