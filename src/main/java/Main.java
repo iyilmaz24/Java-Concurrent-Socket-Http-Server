@@ -100,38 +100,48 @@ public class Main {
         if (readBytes == -1) throw new IOException("Client disconnected prematurely"); 
         bytesInBuffer += readBytes;
 
-        for(int i = 0; i < bytesInBuffer; i++) {  // process the bytes           
+        for(int i = 0; i < bytesInBuffer; i++) {  // process the bytes currently in the buffer           
           if(i > 0 && currentBytes[i] == '\n' && currentBytes[i-1] == '\r') {   // found CRLF
-
             currentHeaderLength = i - 1 - bytesProcessed;
-            if (currentHeaderLength > 0) {
-              currentHeaderBytes = Arrays.copyOfRange(currentBytes, bytesProcessed, i-1);
-              String headerString = new String(currentHeaderBytes, 0, currentHeaderLength, StandardCharsets.US_ASCII);
-              int colonIndex = headerString.indexOf(":");
-              String headerName = headerString.substring(0, colonIndex);
-              String headerValue = headerString.substring(colonIndex + 1).trim();
-              headersMap.put(headerName.trim().toLowerCase(), headerValue);     // normalize the headerName for look-ups
-            }
 
-            bytesProcessed = i + 1;   // processed i / BUFFER_SIZE bytes so far
-
-            if (i > 2 && currentBytes[i-2] == '\n' && currentBytes[i-3] == '\r') {    // found double CRLF
+            if (currentHeaderLength == 0) {    // found double CRLF
               allHeadersConsumed = true;
+              bytesProcessed = i + 1;   // consume final '\n' in double CRLF
               partialBody = Arrays.copyOfRange(currentBytes, bytesProcessed, bytesInBuffer);    // returns new array sized to number of bytes (.length is accurate)
               break;
             }
+            currentHeaderBytes = Arrays.copyOfRange(currentBytes, bytesProcessed, i-1);
+            String headerString = new String(currentHeaderBytes, 0, currentHeaderLength, StandardCharsets.US_ASCII);
+
+            if (headersMap.isEmpty()) {     // is empty for first line of request - ex. "Method URI Version CRLF"
+              String[] requestLinePieces = headerString.split(" ");
+              if (requestLinePieces.length != 3) {
+                throw new IOException("HTTP request line malformed/incorrect");
+              }
+              headersMap.put("request-line", headerString);
+              headersMap.put("method", requestLinePieces[0]);
+              headersMap.put("uri", requestLinePieces[1]);
+              headersMap.put("version", requestLinePieces[2]);
+            } else if (currentHeaderLength > 0) {
+              int colonIndex = headerString.indexOf(":");
+              if (colonIndex > 0) {
+                String headerName = headerString.substring(0, colonIndex).trim().toLowerCase();     // normalize the headerName for look-ups
+                String headerValue = headerString.substring(colonIndex + 1).trim();
+                headersMap.put(headerName, headerValue);
+              } else {
+                  System.err.println("***WARN: Malformed header line ignored: " + headerString);
+              } 
+            }
+            bytesProcessed = i + 1;   // processed i / BUFFER_SIZE bytes so far
           }
         }
 
-        int unprocessedBytes = bytesInBuffer - bytesProcessed;
-        if (unprocessedBytes < 3) {    // minimum 3 bytes kept, for case where double CRLF was cut off, ex. [...\r\n\r] [\n...]
-          System.arraycopy(currentBytes, bytesInBuffer - 3, currentBytes, 0, 3);      // void System.arraycopy(Object src, int srcPos, Object dest, int destPos, int length)
-          bytesInBuffer = 3;
-        } else {
-          System.arraycopy(currentBytes, bytesProcessed, currentBytes, 0, unprocessedBytes);
-          bytesInBuffer = unprocessedBytes;    // the leftover bytes, ex. partial header at end of buffer
+        int unprocessedBytes = bytesInBuffer - bytesProcessed;   
+        if (!allHeadersConsumed) {
+          System.arraycopy(currentBytes, bytesProcessed, currentBytes, 0, unprocessedBytes);    // void System.arraycopy(Object src, int srcPos, Object dest, int destPos, int length)
+          bytesProcessed = 0;     // reset for next iteration
         }
-        bytesProcessed = 0;
+        bytesInBuffer = unprocessedBytes;    // the leftover bytes, ex. partial header at end of buffer   
       }
 
       int remainingBodyLength;
@@ -141,7 +151,6 @@ public class Main {
       } catch (NumberFormatException e) {
         remainingBodyLength = 0;
       }
-      
       handleRequest(headersMap, socket, socketInStream, socketOutStream, partialBody, remainingBodyLength);
     }
   }
