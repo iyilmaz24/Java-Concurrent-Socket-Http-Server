@@ -172,11 +172,11 @@ public class Main {
   public static void handleRequest(Map<String, String> headersMap, Socket socket, InputStream socketInStream, OutputStream socketOutStream, byte[] partialBody, int remainingBodyLength) throws IOException, Exception {
     try {
       boolean responseMade = false;
-      String[] requestLineParts = requestParts.get(0).split(" ");
-      String[] pathStrings = requestLineParts[1].split("/");
+      String method = headersMap.get("method");
+      String[] pathStrings = headersMap.get("uri").split("/");
       byte[] byteMessage;
     
-      if ("GET".equals(requestLineParts[0])) {
+      if ("GET".equals(method)) {
         if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
           byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
@@ -188,16 +188,10 @@ public class Main {
           responseMade = true;
         }
         else if ("user-agent".equals(pathStrings[1])) { // GET "/user-agent" - send response where the User-Agent header's content is the body
-          String currentHeader;
-          for(int i = 1; i < requestParts.size(); i++) { // init "i" as 1 to skip to header section
-            currentHeader = requestParts.get(i);
-            if(currentHeader.contains("User-Agent:")) {
-              String[] userAgentParts = requestParts.get(i).split(" ");
-              byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, userAgentParts[1].length(), CRLF, CRLF, userAgentParts[1]).getBytes(StandardCharsets.US_ASCII);
-              socketOutStream.write((byteMessage));
-              responseMade = true;
-            }
-          }
+          String userAgentValue = headersMap.get("user-agent");
+          byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, userAgentValue.length(), CRLF, CRLF, userAgentValue).getBytes(StandardCharsets.US_ASCII);
+          socketOutStream.write((byteMessage));
+          responseMade = true;
         }
         else if ("files".equals(pathStrings[1])) { // GET "files/{filePath}" - send response with requested file as body
           if (ServerFileDirectory == null) {
@@ -215,7 +209,7 @@ public class Main {
             responseMade = true;
           }
         }
-      } else if ("POST".equals(requestLineParts[0])) {
+      } else if ("POST".equals(method)) {
         if ("files".equals(pathStrings[1])) { // POST "files/{fileName}" - create file with name as fileName and content as the request's body
 
         if (ServerFileDirectory == null) {
@@ -223,36 +217,30 @@ public class Main {
           sendHttpErrorResponse(socketOutStream, RespInternalErr);
           responseMade = true;
         }
-        int bodyLength = 0; String bodyType; String currentHeader;
 
-        for(int i = 1; i < requestParts.size(); i++) { // init "i" as 1 to skip to header section
-          currentHeader = requestParts.get(i);
-          if(currentHeader.contains("Content-Length:")) {
-            String[] headerParts = requestParts.get(i).split(" ");
-            try {
-              bodyLength = Integer.parseInt(headerParts[1]);
-              System.out.println(headerParts[1]);
-              if (bodyLength < 0 || bodyLength > 10_000_000) {
-                System.err.println("***ERROR: Invalid Content-Length header, size of " + bodyLength);
-                sendHttpErrorResponse(socketOutStream, RespInternalErr);
-                responseMade = true;
-                return;
-              }
-            } catch (NumberFormatException e) {
-              bodyLength = 0;
-            }
-          } else if (currentHeader.contains("Content-Type:")) {
-            String[] headerParts = requestParts.get(i).split(" ");
-            bodyType = headerParts[1];
+        String contentType = headersMap.getOrDefault("content-type", TextContent);
+        int contentLength = 0;
+        try {
+          contentLength = Integer.parseInt(headersMap.get("content-length"));
+          if (contentLength < 0 || contentLength > 10_000_000) {
+            System.err.println("***ERROR: Invalid Content-Length header, size of " + contentLength);
+            sendHttpErrorResponse(socketOutStream, RespInternalErr);
+            responseMade = true;
+            return;
           }
+        } catch (NumberFormatException e) {
+          contentLength = 0;
         }
-        byte[] requestBody = new byte[bodyLength];
-        int bytesRead = socketInStream.readNBytes(requestBody, 0, bodyLength);
+
+        byte[] requestBody = new byte[contentLength];
+        System.arraycopy(partialBody, 0, requestBody, 0, partialBody.length);     // copy over partially read body
+        int bytesRead = socketInStream.readNBytes(requestBody, partialBody.length, remainingBodyLength);     // read rest of body from input stream
 
         System.out.printf("bytesRead: %d%n", bytesRead);
-        System.out.printf("bodyLength: %d%n", bodyLength);
-        if (bytesRead < bodyLength) {
-          System.err.printf("***ERROR: Only read %d / %d bytes specified", bytesRead, bodyLength);
+        System.out.printf("contentLength: %d%n", contentLength);
+        int receivedBytes = bytesRead + partialBody.length;
+        if (receivedBytes < contentLength) {
+          System.err.printf("***ERROR: Only received %d / %d bytes specified in Content-Length header", receivedBytes, contentLength);
           sendHttpErrorResponse(socketOutStream, RespInternalErr);
           responseMade = true;
         }
@@ -271,9 +259,9 @@ public class Main {
         byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
         responseMade = true;
-        
         }
       }
+
       if (!responseMade) {
         sendHttpErrorResponse(socketOutStream, RespNotFound); // return 404 Not Found
       }
