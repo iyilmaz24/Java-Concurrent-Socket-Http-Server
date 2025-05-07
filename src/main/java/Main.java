@@ -1,7 +1,5 @@
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -10,10 +8,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,9 +45,11 @@ public class Main {
       ExecutorService executor = Executors.newThreadPerTaskExecutor(virtualThreadFactory);
       
       while (true) {
-        Socket socket = serverSocket.accept(); 
+        Socket socket = serverSocket.accept();
         executor.submit(() -> {
-          try {
+          try (
+            socket;
+            ) { // handle socket cleanup for worker thread
             handleConnection(socket);
           } catch (IOException e) {
             System.err.println("***ERROR: " + e.getMessage());
@@ -170,101 +168,100 @@ public class Main {
   private static final String ContentLength = "Content-Length: ";
 
   public static void handleRequest(Map<String, String> headersMap, Socket socket, InputStream socketInStream, OutputStream socketOutStream, byte[] partialBody, int remainingBodyLength) throws IOException, Exception {
-    try {
-      boolean responseMade = false;
-      String method = headersMap.get("method");
-      String[] pathStrings = headersMap.get("uri").split("/");
-      byte[] byteMessage;
     
-      if ("GET".equals(method)) {
-        if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
-          byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
-          socketOutStream.write((byteMessage));
-          responseMade = true;
-        }
-        else if ("echo".equals(pathStrings[1])) { // GET "/echo/{message}" - send response where message is the body 
-          byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII);
-          socketOutStream.write((byteMessage));
-          responseMade = true;
-        }
-        else if ("user-agent".equals(pathStrings[1])) { // GET "/user-agent" - send response where the User-Agent header's content is the body
-          String userAgentValue = headersMap.get("user-agent");
-          byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, userAgentValue.length(), CRLF, CRLF, userAgentValue).getBytes(StandardCharsets.US_ASCII);
-          socketOutStream.write((byteMessage));
-          responseMade = true;
-        }
-        else if ("files".equals(pathStrings[1])) { // GET "files/{filePath}" - send response with requested file as body
-          if (ServerFileDirectory == null) {
-            System.err.println("***ERROR (POST files/{fileName}): Request to interact with null ServerFileDirectory, not initialized");
-            sendHttpErrorResponse(socketOutStream, RespInternalErr);
-            responseMade = true;
-          }
-          Path requestedFile = ServerFileDirectory.resolve(pathStrings[2]);
-
-          if (Files.exists(requestedFile) && Files.isRegularFile(requestedFile) && Files.isReadable(requestedFile)) { // check file exists, isn't directory or link, and is readable
-            byte[] fileBytes = Files.readAllBytes(requestedFile);
-            byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF, ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
-            socketOutStream.write((byteMessage));
-            socketOutStream.write(fileBytes); // write file's bytes seperately (byte[] too large for String.format)
-            responseMade = true;
-          }
-        }
-      } else if ("POST".equals(method)) {
-        if ("files".equals(pathStrings[1])) { // POST "files/{fileName}" - create file with name as fileName and content as the request's body
-
+    boolean responseMade = false;
+    String method = headersMap.get("method");
+    String[] pathStrings = headersMap.get("uri").split("/");
+    byte[] byteMessage;
+  
+    if ("GET".equals(method)) {
+      if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
+        byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+        socketOutStream.write((byteMessage));
+        responseMade = true;
+      }
+      else if ("echo".equals(pathStrings[1])) { // GET "/echo/{message}" - send response where message is the body 
+        byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII);
+        socketOutStream.write((byteMessage));
+        responseMade = true;
+      }
+      else if ("user-agent".equals(pathStrings[1])) { // GET "/user-agent" - send response where the User-Agent header's content is the body
+        String userAgentValue = headersMap.get("user-agent");
+        byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, userAgentValue.length(), CRLF, CRLF, userAgentValue).getBytes(StandardCharsets.US_ASCII);
+        socketOutStream.write((byteMessage));
+        responseMade = true;
+      }
+      else if ("files".equals(pathStrings[1])) { // GET "files/{filePath}" - send response with requested file as body
         if (ServerFileDirectory == null) {
           System.err.println("***ERROR (POST files/{fileName}): Request to interact with null ServerFileDirectory, not initialized");
           sendHttpErrorResponse(socketOutStream, RespInternalErr);
           responseMade = true;
         }
+        Path requestedFile = ServerFileDirectory.resolve(pathStrings[2]);
 
-        String contentType = headersMap.getOrDefault("content-type", TextContent);
-        int contentLength = 0;
-        try {
-          contentLength = Integer.parseInt(headersMap.get("content-length"));
-          if (contentLength < 0 || contentLength > 10_000_000) {
-            System.err.println("***ERROR: Invalid Content-Length header, size of " + contentLength);
-            sendHttpErrorResponse(socketOutStream, RespInternalErr);
-            responseMade = true;
-            return;
-          }
-        } catch (NumberFormatException e) {
-          contentLength = 0;
+        if (Files.exists(requestedFile) && Files.isRegularFile(requestedFile) && Files.isReadable(requestedFile)) { // check file exists, isn't directory or link, and is readable
+          byte[] fileBytes = Files.readAllBytes(requestedFile);
+          byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF, ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+          socketOutStream.write((byteMessage));
+          socketOutStream.write(fileBytes); // write file's bytes seperately (byte[] too large for String.format)
+          responseMade = true;
         }
+      }
+    } else if ("POST".equals(method)) {
+      if ("files".equals(pathStrings[1])) { // POST "files/{fileName}" - create file with name as fileName and content as the request's body
 
-        byte[] requestBody = new byte[contentLength];
-        System.arraycopy(partialBody, 0, requestBody, 0, partialBody.length);     // copy over partially read body
-        int bytesRead = socketInStream.readNBytes(requestBody, partialBody.length, remainingBodyLength);     // read rest of body from input stream
+      if (ServerFileDirectory == null) {
+        System.err.println("***ERROR (POST files/{fileName}): Request to interact with null ServerFileDirectory, not initialized");
+        sendHttpErrorResponse(socketOutStream, RespInternalErr);
+        responseMade = true;
+      }
 
-        System.out.printf("bytesRead: %d%n", bytesRead);
-        System.out.printf("contentLength: %d%n", contentLength);
-        int receivedBytes = bytesRead + partialBody.length;
-        if (receivedBytes < contentLength) {
-          System.err.printf("***ERROR: Only received %d / %d bytes specified in Content-Length header", receivedBytes, contentLength);
+      String contentType = headersMap.getOrDefault("content-type", TextContent);
+      int contentLength = 0;
+      try {
+        contentLength = Integer.parseInt(headersMap.get("content-length"));
+        if (contentLength < 0 || contentLength > 10_000_000) {
+          System.err.println("***ERROR: Invalid Content-Length header, size of " + contentLength);
           sendHttpErrorResponse(socketOutStream, RespInternalErr);
           responseMade = true;
-        }
-        
-        Path filePath = ServerFileDirectory.resolve(pathStrings[2]);
-        Path normalizedPath = filePath.normalize();
-        if (!normalizedPath.startsWith(ServerFileDirectory)) {
-          System.err.println("***ERROR: HTTP request attempts to access file outside of server's file directory");
-          sendHttpErrorResponse(socketOutStream, RespForbidden); // return 403 Forbidden
-          responseMade = true;
           return;
-        } else {
-          Files.write(filePath, requestBody);
         }
-        
-        byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
-        socketOutStream.write((byteMessage));
-        responseMade = true;
-        }
+      } catch (NumberFormatException e) {
+        contentLength = 0;
       }
 
-      if (!responseMade) {
-        sendHttpErrorResponse(socketOutStream, RespNotFound); // return 404 Not Found
+      byte[] requestBody = new byte[contentLength];
+      System.arraycopy(partialBody, 0, requestBody, 0, partialBody.length);     // copy over partially read body
+      int bytesRead = socketInStream.readNBytes(requestBody, partialBody.length, remainingBodyLength);     // read rest of body from input stream
+
+      System.out.printf("bytesRead: %d%n", bytesRead);
+      System.out.printf("contentLength: %d%n", contentLength);
+      int receivedBytes = bytesRead + partialBody.length;
+      if (receivedBytes < contentLength) {
+        System.err.printf("***ERROR: Only received %d / %d bytes specified in Content-Length header", receivedBytes, contentLength);
+        sendHttpErrorResponse(socketOutStream, RespInternalErr);
+        responseMade = true;
       }
+      
+      Path filePath = ServerFileDirectory.resolve(pathStrings[2]);
+      Path normalizedPath = filePath.normalize();
+      if (!normalizedPath.startsWith(ServerFileDirectory)) {
+        System.err.println("***ERROR: HTTP request attempts to access file outside of server's file directory");
+        sendHttpErrorResponse(socketOutStream, RespForbidden); // return 403 Forbidden
+        responseMade = true;
+        return;
+      } else {
+        Files.write(filePath, requestBody);
+      }
+      
+      byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+      socketOutStream.write((byteMessage));
+      responseMade = true;
+      } 
+    }
+
+    if (!responseMade) {
+      sendHttpErrorResponse(socketOutStream, RespNotFound); // return 404 Not Found
     }
   }
 
