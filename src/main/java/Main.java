@@ -157,6 +157,7 @@ public class Main {
   private static final String CRLF = "\r\n";
 
   private static final String RespOK = "200 OK";
+  private static final String RespCreated = "201 Created";
   private static final String RespNotFound = "404 Not Found";
   private static final String RespForbidden= "403 Forbidden";
   private static final String RespInternalErr = "500 Internal Server Error";
@@ -254,7 +255,7 @@ public class Main {
         Files.write(filePath, requestBody);
       }
       
-      byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+      byteMessage = String.format("%s %s%s%s", Protocol, RespCreated, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
       socketOutStream.write((byteMessage));
       responseMade = true;
       } 
