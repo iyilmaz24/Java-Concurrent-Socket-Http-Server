@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.cert.CRL;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -162,6 +163,7 @@ public class Main {
   private static final String RespForbidden= "403 Forbidden";
   private static final String RespInternalErr = "500 Internal Server Error";
 
+  private static final String ContentEncoding = "Content-Encoding: ";
   private static final String ContentType = "Content-Type: ";
   private static final String TextContent = "text/plain";
   private static final String AppOctetStreamContent = "application/octet-stream";
@@ -173,9 +175,8 @@ public class Main {
     boolean responseMade = false;
     String method = headersMap.get("method");
     String[] pathStrings = headersMap.get("uri").split("/");
-    byte[] byteMessage;
-
     String acceptEncoding = headersMap.getOrDefault("accept-encoding", null);
+    byte[] byteMessage;
   
     if ("GET".equals(method)) {
       if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
@@ -189,9 +190,8 @@ public class Main {
         socketOutStream.write((byteMessage));
         if (acceptEncoding != null) {
           pathStringBytes = getCompressedByteArray(acceptEncoding, pathStringBytes);
-
-          // TO DO: add and send Content-Encoding and Content-Type headers here
-
+          byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
+          socketOutStream.write((byteMessage));
         }
         byteMessage = String.format("%s%d%s%s", ContentLength, pathStringBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
@@ -205,9 +205,8 @@ public class Main {
         socketOutStream.write((byteMessage));
         if (acceptEncoding != null) {
           userAgentBytes = getCompressedByteArray(acceptEncoding, userAgentBytes);
-
-          // TO DO: add and send Content-Encoding and Content-Type headers here
-
+          byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
+          socketOutStream.write((byteMessage));
         } 
         byteMessage = String.format("%s%d%s%s", ContentLength, userAgentBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
@@ -227,9 +226,8 @@ public class Main {
           byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF).getBytes(StandardCharsets.US_ASCII);
           if (acceptEncoding != null) {
             fileBytes = getCompressedByteArray(acceptEncoding, fileBytes);
-
-            // TO DO: add and send Content-Encoding and Content-Type headers here
-
+            byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
+            socketOutStream.write((byteMessage));
           } 
           byteMessage = String.format("%s%d%s%s", ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
