@@ -174,6 +174,8 @@ public class Main {
     String method = headersMap.get("method");
     String[] pathStrings = headersMap.get("uri").split("/");
     byte[] byteMessage;
+
+    String acceptEncoding = headersMap.getOrDefault("accept-encoding", null);
   
     if ("GET".equals(method)) {
       if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
@@ -182,14 +184,34 @@ public class Main {
         responseMade = true;
       }
       else if ("echo".equals(pathStrings[1])) { // GET "/echo/{message}" - send response where message is the body 
-        byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII);
+        byte[] pathStringBytes = pathStrings[2].getBytes();
+        byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
+        if (acceptEncoding != null) {
+          pathStringBytes = getCompressedByteArray(acceptEncoding, pathStringBytes);
+
+          // TO DO: add and send Content-Encoding and Content-Type headers here
+
+        }
+        byteMessage = String.format("%s%d%s%s", ContentLength, pathStringBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+        socketOutStream.write((byteMessage));
+        socketOutStream.write(pathStringBytes);
         responseMade = true;
       }
       else if ("user-agent".equals(pathStrings[1])) { // GET "/user-agent" - send response where the User-Agent header's content is the body
         String userAgentValue = headersMap.get("user-agent");
-        byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, userAgentValue.length(), CRLF, CRLF, userAgentValue).getBytes(StandardCharsets.US_ASCII);
+        byte[] userAgentBytes = userAgentValue.getBytes();
+        byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
+        if (acceptEncoding != null) {
+          userAgentBytes = getCompressedByteArray(acceptEncoding, userAgentBytes);
+
+          // TO DO: add and send Content-Encoding and Content-Type headers here
+
+        } 
+        byteMessage = String.format("%s%d%s%s", ContentLength, userAgentBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+        socketOutStream.write((byteMessage));
+        socketOutStream.write(userAgentBytes);
         responseMade = true;
       }
       else if ("files".equals(pathStrings[1])) { // GET "files/{filePath}" - send response with requested file as body
@@ -202,7 +224,14 @@ public class Main {
 
         if (Files.exists(requestedFile) && Files.isRegularFile(requestedFile) && Files.isReadable(requestedFile)) { // check file exists, isn't directory or link, and is readable
           byte[] fileBytes = Files.readAllBytes(requestedFile);
-          byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF, ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+          byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF).getBytes(StandardCharsets.US_ASCII);
+          if (acceptEncoding != null) {
+            fileBytes = getCompressedByteArray(acceptEncoding, fileBytes);
+
+            // TO DO: add and send Content-Encoding and Content-Type headers here
+
+          } 
+          byteMessage = String.format("%s%d%s%s", ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
           socketOutStream.write(fileBytes); // write file's bytes seperately (byte[] too large for String.format)
           responseMade = true;
@@ -269,6 +298,10 @@ public class Main {
   static void sendHttpErrorResponse(OutputStream socketOutStream, String httpErrorString) throws IOException {
     socketOutStream.write(String.format("%s %s%s%s", Protocol, httpErrorString, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII));
     return;
+  }
+
+  static byte[] getCompressedByteArray(String scheme, byte[] content) {
+    return new byte[0];
   }
 }
 
