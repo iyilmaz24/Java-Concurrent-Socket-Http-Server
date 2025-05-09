@@ -73,85 +73,92 @@ public class Main {
       OutputStream socketOutStream = socket.getOutputStream();
     ) {
       System.out.println("***INFO: Accepted new connection");
-      Map<String, String> headersMap = new HashMap<>();
-      int BUFFER_SIZE = 8192;   // size of chunk to read & process at once, stored in RAM - can't make too big
-      byte[] currentBytes = new byte[BUFFER_SIZE];
+      while(true) {
+        Map<String, String> headersMap = new HashMap<>();
+        int BUFFER_SIZE = 8192;   // size of chunk to read & process at once, stored in RAM - can't make too big
+        byte[] currentBytes = new byte[BUFFER_SIZE];
 
-      int readBytes;
-      int bytesInBuffer = 0;
-      int bytesProcessed = 0; 
+        int readBytes;
+        int bytesInBuffer = 0;
+        int bytesProcessed = 0; 
 
-      byte[] currentHeaderBytes;
-      int currentHeaderLength;
-      boolean allHeadersConsumed = false;
+        byte[] currentHeaderBytes;
+        int currentHeaderLength;
+        boolean allHeadersConsumed = false;
 
-      byte[] partialBody = new byte[0];
+        byte[] partialBody = new byte[0];
 
-      // Example Request:
-          // POST /submit-form HTTP/1.1\r\n
-          // Host: mywebapp.com\r\n
-          // Content-Type: application/x-www-form-urlencoded\r\n
-          // Content-Length: 27\r\n
-          // \r\n
-          // name=John+Doe&age=30
-      
-      while(!allHeadersConsumed) {   // only process headers
-        readBytes = socketInStream.read(currentBytes, bytesInBuffer, BUFFER_SIZE - bytesInBuffer);
-        if (readBytes == -1) throw new IOException("Client disconnected prematurely"); 
-        bytesInBuffer += readBytes;
+        // Example Request:
+            // POST /submit-form HTTP/1.1\r\n
+            // Host: mywebapp.com\r\n
+            // Content-Type: application/x-www-form-urlencoded\r\n
+            // Content-Length: 27\r\n
+            // \r\n
+            // name=John+Doe&age=30
+        
+        while(!allHeadersConsumed) {   // only process headers
+          readBytes = socketInStream.read(currentBytes, bytesInBuffer, BUFFER_SIZE - bytesInBuffer);
+          if (readBytes == -1) throw new IOException("Client disconnected prematurely"); 
+          bytesInBuffer += readBytes;
 
-        for(int i = 0; i < bytesInBuffer; i++) {  // process the bytes currently in the buffer           
-          if(i > 0 && currentBytes[i] == '\n' && currentBytes[i-1] == '\r') {   // found CRLF
-            currentHeaderLength = i - 1 - bytesProcessed;
+          for(int i = 0; i < bytesInBuffer; i++) {  // process the bytes currently in the buffer           
+            if(i > 0 && currentBytes[i] == '\n' && currentBytes[i-1] == '\r') {   // found CRLF
+              currentHeaderLength = i - 1 - bytesProcessed;
 
-            if (currentHeaderLength == 0) {    // found double CRLF
-              allHeadersConsumed = true;
-              bytesProcessed = i + 1;   // consume final '\n' in double CRLF
-              partialBody = Arrays.copyOfRange(currentBytes, bytesProcessed, bytesInBuffer);    // returns new array sized to number of bytes (.length is accurate)
-              break;
-            }
-            currentHeaderBytes = Arrays.copyOfRange(currentBytes, bytesProcessed, i-1);
-            String headerString = new String(currentHeaderBytes, 0, currentHeaderLength, StandardCharsets.US_ASCII);
-
-            if (headersMap.isEmpty()) {     // is empty for first line of request - ex. "Method URI Version CRLF"
-              String[] requestLinePieces = headerString.split(" ");
-              if (requestLinePieces.length != 3) {
-                throw new IOException("HTTP request line malformed/incorrect");
+              if (currentHeaderLength == 0) {    // found double CRLF
+                allHeadersConsumed = true;
+                bytesProcessed = i + 1;   // consume final '\n' in double CRLF
+                partialBody = Arrays.copyOfRange(currentBytes, bytesProcessed, bytesInBuffer);    // returns new array sized to number of bytes (.length is accurate)
+                break;
               }
-              headersMap.put("request-line", headerString);
-              headersMap.put("method", requestLinePieces[0]);
-              headersMap.put("uri", requestLinePieces[1]);
-              headersMap.put("version", requestLinePieces[2]);
-            } else if (currentHeaderLength > 0) {
-              int colonIndex = headerString.indexOf(":");
-              if (colonIndex > 0) {
-                String headerName = headerString.substring(0, colonIndex).trim().toLowerCase();     // normalize the headerName for look-ups
-                String headerValue = headerString.substring(colonIndex + 1).trim();
-                headersMap.put(headerName, headerValue);
-              } else {
-                  System.err.println("***WARN: Malformed header line ignored: " + headerString);
-              } 
+              currentHeaderBytes = Arrays.copyOfRange(currentBytes, bytesProcessed, i-1);
+              String headerString = new String(currentHeaderBytes, 0, currentHeaderLength, StandardCharsets.US_ASCII);
+
+              if (headersMap.isEmpty()) {     // is empty for first line of request - ex. "Method URI Version CRLF"
+                String[] requestLinePieces = headerString.split(" ");
+                if (requestLinePieces.length != 3) {
+                  throw new IOException("HTTP request line malformed/incorrect");
+                }
+                headersMap.put("request-line", headerString);
+                headersMap.put("method", requestLinePieces[0]);
+                headersMap.put("uri", requestLinePieces[1]);
+                headersMap.put("version", requestLinePieces[2]);
+              } else if (currentHeaderLength > 0) {
+                int colonIndex = headerString.indexOf(":");
+                if (colonIndex > 0) {
+                  String headerName = headerString.substring(0, colonIndex).trim().toLowerCase();     // normalize the headerName for look-ups
+                  String headerValue = headerString.substring(colonIndex + 1).trim();
+                  headersMap.put(headerName, headerValue);
+                } else {
+                    System.err.println("***WARN: Malformed header line ignored: " + headerString);
+                } 
+              }
+              bytesProcessed = i + 1;   // processed i / BUFFER_SIZE bytes so far
             }
-            bytesProcessed = i + 1;   // processed i / BUFFER_SIZE bytes so far
           }
+
+          int unprocessedBytes = bytesInBuffer - bytesProcessed;   
+          if (!allHeadersConsumed) {
+            System.arraycopy(currentBytes, bytesProcessed, currentBytes, 0, unprocessedBytes);    // void System.arraycopy(Object src, int srcPos, Object dest, int destPos, int length)
+            bytesProcessed = 0;     // reset for next iteration
+          }
+          bytesInBuffer = unprocessedBytes;    // the leftover bytes, ex. partial header at end of buffer   
         }
 
-        int unprocessedBytes = bytesInBuffer - bytesProcessed;   
-        if (!allHeadersConsumed) {
-          System.arraycopy(currentBytes, bytesProcessed, currentBytes, 0, unprocessedBytes);    // void System.arraycopy(Object src, int srcPos, Object dest, int destPos, int length)
-          bytesProcessed = 0;     // reset for next iteration
+        int remainingBodyLength;
+        try {
+          remainingBodyLength = Integer.parseInt(headersMap.getOrDefault("content-length", "0")) - partialBody.length;
+          if (remainingBodyLength < 0) remainingBodyLength = 0;
+        } catch (NumberFormatException e) {
+          remainingBodyLength = 0;
         }
-        bytesInBuffer = unprocessedBytes;    // the leftover bytes, ex. partial header at end of buffer   
-      }
+        handleRequest(headersMap, socket, socketInStream, socketOutStream, partialBody, remainingBodyLength);
 
-      int remainingBodyLength;
-      try {
-        remainingBodyLength = Integer.parseInt(headersMap.getOrDefault("content-length", "0")) - partialBody.length;
-        if (remainingBodyLength < 0) remainingBodyLength = 0;
-      } catch (NumberFormatException e) {
-        remainingBodyLength = 0;
+        String connectionClose = headersMap.get("connection");
+        if (connectionClose != null && connectionClose.equals("close")) {
+          break;
+        }
       }
-      handleRequest(headersMap, socket, socketInStream, socketOutStream, partialBody, remainingBodyLength);
     }
   }
 
@@ -164,12 +171,14 @@ public class Main {
   private static final String RespForbidden= "403 Forbidden";
   private static final String RespInternalErr = "500 Internal Server Error";
 
+  private static final String ConnectionCloseCRLF = "Connection: close\r\n";
+
   private static final String ContentEncoding = "Content-Encoding: ";
+  private static final String ContentLength = "Content-Length: ";
+
   private static final String ContentType = "Content-Type: ";
   private static final String TextContent = "text/plain";
   private static final String AppOctetStreamContent = "application/octet-stream";
-
-  private static final String ContentLength = "Content-Length: ";
 
   static Map<String, Boolean> supportedCompressionSchemes = new HashMap<>();
   static {
@@ -183,13 +192,16 @@ public class Main {
     String[] pathStrings = headersMap.get("uri").split("/");
     byte[] byteMessage;
 
+    String connectionClose = headersMap.get("connection");
+    if (connectionClose != null) connectionClose = connectionClose.trim().toLowerCase();
+
     String acceptEncodingHeader = headersMap.getOrDefault("accept-encoding", null);
     String acceptEncoding = null; 
     if (acceptEncodingHeader != null) {
       String[] possibleEncodings = acceptEncodingHeader.split(",");
       String currentEncoding = null;
       for (String encoding : possibleEncodings) {
-        currentEncoding = encoding.toLowerCase().trim();
+        currentEncoding = encoding.trim().toLowerCase();
         if (supportedCompressionSchemes.getOrDefault(currentEncoding, null) != null) {
           acceptEncoding = currentEncoding;
           break;
@@ -199,7 +211,13 @@ public class Main {
   
     if ("GET".equals(method)) {
       if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
-        byteMessage = String.format("%s %s%s%s", Protocol, RespOK, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+        byteMessage = String.format("%s %s", Protocol, RespOK).getBytes(StandardCharsets.US_ASCII);
+        socketOutStream.write((byteMessage));
+        if (connectionClose != null && connectionClose.equals("close")) {
+          byteMessage = String.format("%s", ConnectionCloseCRLF).getBytes(StandardCharsets.US_ASCII);
+          socketOutStream.write((byteMessage));
+        }
+        byteMessage = String.format("%s%s", CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
         responseMade = true;
       }
@@ -210,6 +228,10 @@ public class Main {
         if (acceptEncoding != null) {
           pathStringBytes = getCompressedByteArray(acceptEncoding, pathStringBytes);
           byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
+          socketOutStream.write((byteMessage));
+        }
+        if (connectionClose != null && connectionClose.equals("close")) {
+          byteMessage = String.format("%s", ConnectionCloseCRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
         }
         byteMessage = String.format("%s%d%s%s", ContentLength, pathStringBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
@@ -227,6 +249,10 @@ public class Main {
           byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
         } 
+        if (connectionClose != null && connectionClose.equals("close")) {
+          byteMessage = String.format("%s", ConnectionCloseCRLF).getBytes(StandardCharsets.US_ASCII);
+          socketOutStream.write((byteMessage));
+        }
         byteMessage = String.format("%s%d%s%s", ContentLength, userAgentBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
         socketOutStream.write(userAgentBytes);
@@ -249,6 +275,10 @@ public class Main {
             byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
             socketOutStream.write((byteMessage));
           } 
+          if (connectionClose != null && connectionClose.equals("close")) {
+            byteMessage = String.format("%s", ConnectionCloseCRLF).getBytes(StandardCharsets.US_ASCII);
+            socketOutStream.write((byteMessage));
+          }
           byteMessage = String.format("%s%d%s%s", ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
           socketOutStream.write(fileBytes); // write file's bytes seperately (byte[] too large for String.format)
@@ -299,8 +329,13 @@ public class Main {
       } else {
         Files.write(filePath, requestBody);
       }
-      
-      byteMessage = String.format("%s %s%s%s", Protocol, RespCreated, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+      byteMessage = String.format("%s %s", Protocol, RespCreated).getBytes(StandardCharsets.US_ASCII);
+      socketOutStream.write((byteMessage));
+      if (connectionClose != null && connectionClose.equals("close")) {
+        byteMessage = String.format("%s", ConnectionCloseCRLF).getBytes(StandardCharsets.US_ASCII);
+        socketOutStream.write((byteMessage));
+      }
+      byteMessage = String.format("%s%s", CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
       socketOutStream.write((byteMessage));
       responseMade = true;
       } 
@@ -323,7 +358,7 @@ public class Main {
 
     ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 
-    switch(scheme.toLowerCase().trim()) {
+    switch(scheme.trim().toLowerCase()) {
       case "gzip":
         try (
           GZIPOutputStream gzipStream = new GZIPOutputStream(byteArrayOutputStream);
