@@ -183,8 +183,19 @@ public class Main {
     String[] pathStrings = headersMap.get("uri").split("/");
     byte[] byteMessage;
 
-    String acceptEncoding = headersMap.getOrDefault("accept-encoding", null);
-    if (acceptEncoding != null) acceptEncoding = acceptEncoding.trim().toLowerCase();
+    String acceptEncodingHeader = headersMap.getOrDefault("accept-encoding", null);
+    String acceptEncoding = null; 
+    if (acceptEncodingHeader != null) {
+      String[] possibleEncodings = acceptEncodingHeader.split(",");
+      String currentEncoding = null;
+      for (String encoding : possibleEncodings) {
+        currentEncoding = encoding.toLowerCase().trim();
+        if (supportedCompressionSchemes.getOrDefault(currentEncoding, null) != null) {
+          acceptEncoding = currentEncoding;
+          break;
+        }
+      }
+    }
   
     if ("GET".equals(method)) {
       if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
@@ -196,7 +207,7 @@ public class Main {
         byte[] pathStringBytes = pathStrings[2].getBytes();
         byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
-        if (acceptEncoding != null && supportedCompressionSchemes.get(acceptEncoding) != null) {
+        if (acceptEncoding != null) {
           pathStringBytes = getCompressedByteArray(acceptEncoding, pathStringBytes);
           byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
@@ -211,7 +222,7 @@ public class Main {
         byte[] userAgentBytes = userAgentValue.getBytes();
         byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
-        if (acceptEncoding != null && supportedCompressionSchemes.get(acceptEncoding) != null) {
+        if (acceptEncoding != null) {
           userAgentBytes = getCompressedByteArray(acceptEncoding, userAgentBytes);
           byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
@@ -233,7 +244,7 @@ public class Main {
           byte[] fileBytes = Files.readAllBytes(requestedFile);
           byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
-          if (acceptEncoding != null && supportedCompressionSchemes.get(acceptEncoding) != null) {
+          if (acceptEncoding != null) {
             fileBytes = getCompressedByteArray(acceptEncoding, fileBytes);
             byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
             socketOutStream.write((byteMessage));
