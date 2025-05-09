@@ -1,3 +1,4 @@
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -8,13 +9,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.cert.CRL;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.zip.GZIPOutputStream;
 
 public class Main {  
 
@@ -244,7 +245,6 @@ public class Main {
         responseMade = true;
       }
 
-      String contentType = headersMap.getOrDefault("content-type", TextContent);
       int contentLength = 0;
       try {
         contentLength = Integer.parseInt(headersMap.get("content-length"));
@@ -298,8 +298,28 @@ public class Main {
     return;
   }
 
-  static byte[] getCompressedByteArray(String scheme, byte[] content) {
-    return new byte[0];
+  static byte[] getCompressedByteArray(String scheme, byte[] content) throws IOException, IllegalArgumentException {
+    if (scheme == null || content == null) {
+      throw new IllegalArgumentException("Null argument provided to getCompressedByteArray(String, byte[])");
+    }
+
+    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+
+    switch(scheme.toLowerCase()) {
+      case "gzip":
+        try (
+          GZIPOutputStream gzipStream = new GZIPOutputStream(byteArrayOutputStream);
+        ) {
+          gzipStream.write(content);
+        } catch (IOException e) {
+          throw new IOException("Error thrown while compressing byte[] with gzip in getCompressedByteArray(String, byte[])", e);
+        }
+        break;
+      default:
+        throw new IllegalArgumentException("Compression scheme not provided or unsupported in getCompressedByteArray(String, byte[]): " + scheme);
+    }
+
+    return byteArrayOutputStream.toByteArray();
   }
 }
 
