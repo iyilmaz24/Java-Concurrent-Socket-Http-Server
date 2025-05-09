@@ -1,3 +1,4 @@
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -14,6 +15,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.zip.GZIPOutputStream;
 
 public class Main {  
 
@@ -162,11 +164,17 @@ public class Main {
   private static final String RespForbidden= "403 Forbidden";
   private static final String RespInternalErr = "500 Internal Server Error";
 
+  private static final String ContentEncoding = "Content-Encoding: ";
   private static final String ContentType = "Content-Type: ";
   private static final String TextContent = "text/plain";
   private static final String AppOctetStreamContent = "application/octet-stream";
 
   private static final String ContentLength = "Content-Length: ";
+
+  static Map<String, Boolean> supportedCompressionSchemes = new HashMap<>();
+  static {
+    supportedCompressionSchemes.put("gzip", true);
+  }
 
   public static void handleRequest(Map<String, String> headersMap, Socket socket, InputStream socketInStream, OutputStream socketOutStream, byte[] partialBody, int remainingBodyLength) throws IOException, Exception {
     
@@ -174,6 +182,20 @@ public class Main {
     String method = headersMap.get("method");
     String[] pathStrings = headersMap.get("uri").split("/");
     byte[] byteMessage;
+
+    String acceptEncodingHeader = headersMap.getOrDefault("accept-encoding", null);
+    String acceptEncoding = null; 
+    if (acceptEncodingHeader != null) {
+      String[] possibleEncodings = acceptEncodingHeader.split(",");
+      String currentEncoding = null;
+      for (String encoding : possibleEncodings) {
+        currentEncoding = encoding.toLowerCase().trim();
+        if (supportedCompressionSchemes.getOrDefault(currentEncoding, null) != null) {
+          acceptEncoding = currentEncoding;
+          break;
+        }
+      }
+    }
   
     if ("GET".equals(method)) {
       if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
@@ -182,14 +204,32 @@ public class Main {
         responseMade = true;
       }
       else if ("echo".equals(pathStrings[1])) { // GET "/echo/{message}" - send response where message is the body 
-        byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, pathStrings[2].length(), CRLF, CRLF, pathStrings[2]).getBytes(StandardCharsets.US_ASCII);
+        byte[] pathStringBytes = pathStrings[2].getBytes();
+        byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
+        if (acceptEncoding != null) {
+          pathStringBytes = getCompressedByteArray(acceptEncoding, pathStringBytes);
+          byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
+          socketOutStream.write((byteMessage));
+        }
+        byteMessage = String.format("%s%d%s%s", ContentLength, pathStringBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+        socketOutStream.write((byteMessage));
+        socketOutStream.write(pathStringBytes);
         responseMade = true;
       }
       else if ("user-agent".equals(pathStrings[1])) { // GET "/user-agent" - send response where the User-Agent header's content is the body
         String userAgentValue = headersMap.get("user-agent");
-        byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF, ContentLength, userAgentValue.length(), CRLF, CRLF, userAgentValue).getBytes(StandardCharsets.US_ASCII);
+        byte[] userAgentBytes = userAgentValue.getBytes();
+        byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
+        if (acceptEncoding != null) {
+          userAgentBytes = getCompressedByteArray(acceptEncoding, userAgentBytes);
+          byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
+          socketOutStream.write((byteMessage));
+        } 
+        byteMessage = String.format("%s%d%s%s", ContentLength, userAgentBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+        socketOutStream.write((byteMessage));
+        socketOutStream.write(userAgentBytes);
         responseMade = true;
       }
       else if ("files".equals(pathStrings[1])) { // GET "files/{filePath}" - send response with requested file as body
@@ -202,7 +242,14 @@ public class Main {
 
         if (Files.exists(requestedFile) && Files.isRegularFile(requestedFile) && Files.isReadable(requestedFile)) { // check file exists, isn't directory or link, and is readable
           byte[] fileBytes = Files.readAllBytes(requestedFile);
-          byteMessage = String.format("%s %s%s%s%s%s%s%d%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF, ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
+          byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF).getBytes(StandardCharsets.US_ASCII);
+          socketOutStream.write((byteMessage));
+          if (acceptEncoding != null) {
+            fileBytes = getCompressedByteArray(acceptEncoding, fileBytes);
+            byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
+            socketOutStream.write((byteMessage));
+          } 
+          byteMessage = String.format("%s%d%s%s", ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
           socketOutStream.write(fileBytes); // write file's bytes seperately (byte[] too large for String.format)
           responseMade = true;
@@ -217,7 +264,6 @@ public class Main {
         responseMade = true;
       }
 
-      String contentType = headersMap.getOrDefault("content-type", TextContent);
       int contentLength = 0;
       try {
         contentLength = Integer.parseInt(headersMap.get("content-length"));
@@ -235,13 +281,12 @@ public class Main {
       System.arraycopy(partialBody, 0, requestBody, 0, partialBody.length);     // copy over partially read body
       int bytesRead = socketInStream.readNBytes(requestBody, partialBody.length, remainingBodyLength);     // read rest of body from input stream
 
-      System.out.printf("bytesRead: %d%n", bytesRead);
-      System.out.printf("contentLength: %d%n", contentLength);
       int receivedBytes = bytesRead + partialBody.length;
       if (receivedBytes < contentLength) {
         System.err.printf("***ERROR: Only received %d / %d bytes specified in Content-Length header", receivedBytes, contentLength);
         sendHttpErrorResponse(socketOutStream, RespInternalErr);
         responseMade = true;
+        return;
       }
       
       Path filePath = ServerFileDirectory.resolve(pathStrings[2]);
@@ -269,6 +314,30 @@ public class Main {
   static void sendHttpErrorResponse(OutputStream socketOutStream, String httpErrorString) throws IOException {
     socketOutStream.write(String.format("%s %s%s%s", Protocol, httpErrorString, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII));
     return;
+  }
+
+  static byte[] getCompressedByteArray(String scheme, byte[] content) throws IOException, IllegalArgumentException {
+    if (scheme == null || content == null) {
+      throw new IllegalArgumentException("Null argument provided to getCompressedByteArray(String, byte[])");
+    }
+
+    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+
+    switch(scheme.toLowerCase().trim()) {
+      case "gzip":
+        try (
+          GZIPOutputStream gzipStream = new GZIPOutputStream(byteArrayOutputStream);
+        ) {
+          gzipStream.write(content);
+        } catch (IOException e) {
+          throw new IOException("Error thrown while compressing byte[] with gzip in getCompressedByteArray(String, byte[])", e);
+        }
+        break;
+      default:
+        throw new IllegalArgumentException("Compression scheme not provided or unsupported in getCompressedByteArray(String, byte[]): " + scheme);
+    }
+
+    return byteArrayOutputStream.toByteArray();
   }
 }
 
