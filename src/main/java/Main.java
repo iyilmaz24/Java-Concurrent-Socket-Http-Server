@@ -171,13 +171,20 @@ public class Main {
 
   private static final String ContentLength = "Content-Length: ";
 
+  static Map<String, Boolean> supportedCompressionSchemes = new HashMap<>();
+  static {
+    supportedCompressionSchemes.put("gzip", true);
+  }
+
   public static void handleRequest(Map<String, String> headersMap, Socket socket, InputStream socketInStream, OutputStream socketOutStream, byte[] partialBody, int remainingBodyLength) throws IOException, Exception {
     
     boolean responseMade = false;
     String method = headersMap.get("method");
     String[] pathStrings = headersMap.get("uri").split("/");
-    String acceptEncoding = headersMap.getOrDefault("accept-encoding", null);
     byte[] byteMessage;
+
+    String acceptEncoding = headersMap.getOrDefault("accept-encoding", null);
+    if (acceptEncoding != null) acceptEncoding = acceptEncoding.trim().toLowerCase();
   
     if ("GET".equals(method)) {
       if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
@@ -189,7 +196,7 @@ public class Main {
         byte[] pathStringBytes = pathStrings[2].getBytes();
         byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
-        if (acceptEncoding != null) {
+        if (acceptEncoding != null && supportedCompressionSchemes.get(acceptEncoding) != null) {
           pathStringBytes = getCompressedByteArray(acceptEncoding, pathStringBytes);
           byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
@@ -204,7 +211,7 @@ public class Main {
         byte[] userAgentBytes = userAgentValue.getBytes();
         byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF).getBytes(StandardCharsets.US_ASCII);
         socketOutStream.write((byteMessage));
-        if (acceptEncoding != null) {
+        if (acceptEncoding != null && supportedCompressionSchemes.get(acceptEncoding) != null) {
           userAgentBytes = getCompressedByteArray(acceptEncoding, userAgentBytes);
           byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
           socketOutStream.write((byteMessage));
@@ -225,7 +232,8 @@ public class Main {
         if (Files.exists(requestedFile) && Files.isRegularFile(requestedFile) && Files.isReadable(requestedFile)) { // check file exists, isn't directory or link, and is readable
           byte[] fileBytes = Files.readAllBytes(requestedFile);
           byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF).getBytes(StandardCharsets.US_ASCII);
-          if (acceptEncoding != null) {
+          socketOutStream.write((byteMessage));
+          if (acceptEncoding != null && supportedCompressionSchemes.get(acceptEncoding) != null) {
             fileBytes = getCompressedByteArray(acceptEncoding, fileBytes);
             byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
             socketOutStream.write((byteMessage));
@@ -262,13 +270,12 @@ public class Main {
       System.arraycopy(partialBody, 0, requestBody, 0, partialBody.length);     // copy over partially read body
       int bytesRead = socketInStream.readNBytes(requestBody, partialBody.length, remainingBodyLength);     // read rest of body from input stream
 
-      System.out.printf("bytesRead: %d%n", bytesRead);
-      System.out.printf("contentLength: %d%n", contentLength);
       int receivedBytes = bytesRead + partialBody.length;
       if (receivedBytes < contentLength) {
         System.err.printf("***ERROR: Only received %d / %d bytes specified in Content-Length header", receivedBytes, contentLength);
         sendHttpErrorResponse(socketOutStream, RespInternalErr);
         responseMade = true;
+        return;
       }
       
       Path filePath = ServerFileDirectory.resolve(pathStrings[2]);
@@ -305,7 +312,7 @@ public class Main {
 
     ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 
-    switch(scheme.toLowerCase()) {
+    switch(scheme.toLowerCase().trim()) {
       case "gzip":
         try (
           GZIPOutputStream gzipStream = new GZIPOutputStream(byteArrayOutputStream);
