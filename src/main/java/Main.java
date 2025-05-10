@@ -112,7 +112,7 @@ public class Main {
                 break;
               }
               currentHeaderBytes = Arrays.copyOfRange(currentBytes, bytesProcessed, i-1);
-              String headerString = new String(currentHeaderBytes, 0, currentHeaderLength, StandardCharsets.US_ASCII);
+              String headerString = new String(currentHeaderBytes, 0, currentHeaderLength, StandardCharsets.UTF_8);
 
               if (headersMap.isEmpty()) {     // is empty for first line of request - ex. "Method URI Version CRLF"
                 String[] requestLinePieces = headerString.split(" ");
@@ -208,53 +208,50 @@ public class Main {
         }
       }
     }
-  
+
+    StringBuilder responseBuilder = new StringBuilder();
+
     if ("GET".equals(method)) {
-      if (pathStrings.length == 0) { // GET "/" - if original path was "/", respond 200 OK
-        byteMessage = String.format("%s %s", Protocol, RespOK).getBytes(StandardCharsets.US_ASCII);
-        socketOutStream.write((byteMessage));
+      if (pathStrings.length == 0 || pathStrings.length == 2 && pathStrings[1].equals("")) { // GET "/" - if original path was "/", respond 200 OK
+        responseBuilder.append(Protocol).append(" ").append(RespOK).append(CRLF);
         if (connectionClose != null && connectionClose.equals("close")) {
-          byteMessage = String.format("%s", ConnectionCloseCRLF).getBytes(StandardCharsets.US_ASCII);
-          socketOutStream.write((byteMessage));
+          responseBuilder.append(ConnectionCloseCRLF);
         }
-        byteMessage = String.format("%s%s", CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
-        socketOutStream.write((byteMessage));
+        responseBuilder.append(CRLF);
+        socketOutStream.write((responseBuilder.toString().getBytes(StandardCharsets.UTF_8)));
         responseMade = true;
       }
       else if ("echo".equals(pathStrings[1])) { // GET "/echo/{message}" - send response where message is the body 
-        byte[] pathStringBytes = pathStrings[2].getBytes();
-        byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF).getBytes(StandardCharsets.US_ASCII);
-        socketOutStream.write((byteMessage));
+        byte[] pathStringBytes = new byte[0];
+        if (pathStrings.length >= 3) pathStringBytes = pathStrings[2].getBytes(StandardCharsets.UTF_8);
+
+        responseBuilder.append(Protocol).append(" ").append(RespOK).append(CRLF).append(ContentType).append(TextContent).append(CRLF);
         if (acceptEncoding != null) {
           pathStringBytes = getCompressedByteArray(acceptEncoding, pathStringBytes);
-          byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
-          socketOutStream.write((byteMessage));
+          responseBuilder.append(ContentEncoding).append(acceptEncoding).append(CRLF);
         }
         if (connectionClose != null && connectionClose.equals("close")) {
-          byteMessage = String.format("%s", ConnectionCloseCRLF).getBytes(StandardCharsets.US_ASCII);
-          socketOutStream.write((byteMessage));
+          responseBuilder.append(ConnectionCloseCRLF);
         }
-        byteMessage = String.format("%s%d%s%s", ContentLength, pathStringBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
-        socketOutStream.write((byteMessage));
+        responseBuilder.append(ContentLength).append(pathStringBytes.length).append(CRLF).append(CRLF);
+        socketOutStream.write((responseBuilder.toString().getBytes(StandardCharsets.UTF_8)));
         socketOutStream.write(pathStringBytes);
         responseMade = true;
       }
       else if ("user-agent".equals(pathStrings[1])) { // GET "/user-agent" - send response where the User-Agent header's content is the body
         String userAgentValue = headersMap.get("user-agent");
-        byte[] userAgentBytes = userAgentValue.getBytes();
-        byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, TextContent, CRLF).getBytes(StandardCharsets.US_ASCII);
-        socketOutStream.write((byteMessage));
+        byte[] userAgentBytes = userAgentValue.getBytes(StandardCharsets.UTF_8);
+
+        responseBuilder.append(Protocol).append(" ").append(RespOK).append(CRLF).append(ContentType).append(TextContent).append(CRLF);
         if (acceptEncoding != null) {
           userAgentBytes = getCompressedByteArray(acceptEncoding, userAgentBytes);
-          byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
-          socketOutStream.write((byteMessage));
+          responseBuilder.append(ContentEncoding).append(acceptEncoding).append(CRLF);
         } 
         if (connectionClose != null && connectionClose.equals("close")) {
-          byteMessage = String.format("%s", ConnectionCloseCRLF).getBytes(StandardCharsets.US_ASCII);
-          socketOutStream.write((byteMessage));
+          responseBuilder.append(ConnectionCloseCRLF);
         }
-        byteMessage = String.format("%s%d%s%s", ContentLength, userAgentBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
-        socketOutStream.write((byteMessage));
+        responseBuilder.append(ContentLength).append(userAgentBytes.length).append(CRLF).append(CRLF);
+        socketOutStream.write((responseBuilder.toString().getBytes(StandardCharsets.UTF_8)));
         socketOutStream.write(userAgentBytes);
         responseMade = true;
       }
@@ -264,23 +261,26 @@ public class Main {
           sendHttpErrorResponse(socketOutStream, RespInternalErr);
           responseMade = true;
         }
-        Path requestedFile = ServerFileDirectory.resolve(pathStrings[2]);
+
+        Path requestedFile;
+        if (pathStrings.length >= 3) requestedFile = ServerFileDirectory.resolve(pathStrings[2]);
+        else {
+          sendHttpErrorResponse(socketOutStream, RespNotFound);
+          return;
+        }
 
         if (Files.exists(requestedFile) && Files.isRegularFile(requestedFile) && Files.isReadable(requestedFile)) { // check file exists, isn't directory or link, and is readable
           byte[] fileBytes = Files.readAllBytes(requestedFile);
-          byteMessage = String.format("%s %s%s%s%s%s", Protocol, RespOK, CRLF, ContentType, AppOctetStreamContent, CRLF).getBytes(StandardCharsets.US_ASCII);
-          socketOutStream.write((byteMessage));
+          responseBuilder.append(Protocol).append(" ").append(RespOK).append(CRLF).append(ContentType).append(AppOctetStreamContent).append(CRLF);
           if (acceptEncoding != null) {
             fileBytes = getCompressedByteArray(acceptEncoding, fileBytes);
-            byteMessage = String.format("%s%s%s", ContentEncoding, acceptEncoding, CRLF).getBytes(StandardCharsets.US_ASCII);
-            socketOutStream.write((byteMessage));
+            responseBuilder.append(ContentEncoding).append(acceptEncoding).append(CRLF);
           } 
           if (connectionClose != null && connectionClose.equals("close")) {
-            byteMessage = String.format("%s", ConnectionCloseCRLF).getBytes(StandardCharsets.US_ASCII);
-            socketOutStream.write((byteMessage));
+            responseBuilder.append(ConnectionCloseCRLF);
           }
-          byteMessage = String.format("%s%d%s%s", ContentLength, fileBytes.length, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
-          socketOutStream.write((byteMessage));
+          responseBuilder.append(ContentLength).append(fileBytes.length).append(CRLF).append(CRLF);
+          socketOutStream.write((responseBuilder.toString().getBytes(StandardCharsets.UTF_8)));
           socketOutStream.write(fileBytes); // write file's bytes seperately (byte[] too large for String.format)
           responseMade = true;
         }
@@ -319,9 +319,15 @@ public class Main {
         return;
       }
       
-      Path filePath = ServerFileDirectory.resolve(pathStrings[2]);
+      Path filePath;
+      if (pathStrings.length >= 3) filePath = ServerFileDirectory.resolve(pathStrings[2]);
+      else {
+        sendHttpErrorResponse(socketOutStream, RespNotFound);
+        return;
+      }
+
       Path normalizedPath = filePath.normalize();
-      if (!normalizedPath.startsWith(ServerFileDirectory)) {
+      if (!normalizedPath.startsWith(ServerFileDirectory.normalize())) {
         System.err.println("***ERROR: HTTP request attempts to access file outside of server's file directory");
         sendHttpErrorResponse(socketOutStream, RespForbidden); // return 403 Forbidden
         responseMade = true;
@@ -329,14 +335,12 @@ public class Main {
       } else {
         Files.write(filePath, requestBody);
       }
-      byteMessage = String.format("%s %s", Protocol, RespCreated).getBytes(StandardCharsets.US_ASCII);
-      socketOutStream.write((byteMessage));
+      responseBuilder.append(Protocol).append(" ").append(RespCreated);
       if (connectionClose != null && connectionClose.equals("close")) {
-        byteMessage = String.format("%s", ConnectionCloseCRLF).getBytes(StandardCharsets.US_ASCII);
-        socketOutStream.write((byteMessage));
+        responseBuilder.append(ConnectionCloseCRLF);
       }
-      byteMessage = String.format("%s%s", CRLF, CRLF).getBytes(StandardCharsets.US_ASCII);
-      socketOutStream.write((byteMessage));
+      responseBuilder.append(CRLF).append(CRLF);
+      socketOutStream.write((responseBuilder.toString().getBytes(StandardCharsets.UTF_8)));
       responseMade = true;
       } 
     }
@@ -347,7 +351,7 @@ public class Main {
   }
 
   static void sendHttpErrorResponse(OutputStream socketOutStream, String httpErrorString) throws IOException {
-    socketOutStream.write(String.format("%s %s%s%s", Protocol, httpErrorString, CRLF, CRLF).getBytes(StandardCharsets.US_ASCII));
+    socketOutStream.write(String.format("%s %s%s%s", Protocol, httpErrorString, CRLF, CRLF).getBytes(StandardCharsets.UTF_8));
     return;
   }
 
