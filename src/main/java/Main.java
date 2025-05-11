@@ -190,7 +190,6 @@ public class Main {
     boolean responseMade = false;
     String method = headersMap.get("method");
     String[] pathStrings = headersMap.get("uri").split("/");
-    byte[] byteMessage;
 
     String connectionClose = headersMap.get("connection");
     if (connectionClose != null) connectionClose = connectionClose.trim().toLowerCase();
