@@ -1,38 +1,39 @@
+# CodeCrafters HTTP Server
 [![progress-banner](https://backend.codecrafters.io/progress/http-server/c9a21015-9f29-4d64-bbdf-6f32c27c23a2)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
 
-This is a starting point for Java solutions to the
-["Build Your Own HTTP server" Challenge](https://app.codecrafters.io/courses/http-server/overview).
+This project implements a HTTP/1.1 server, it handles GET and POST requests, serving static files, echoing messages, returning user-agent information, and supporting gzip compression.
 
-[HTTP](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol) is the
-protocol that powers the web. In this challenge, you'll build a HTTP/1.1 server
-that is capable of serving multiple clients.
+## Technologies Used
+* **Java 23:** The programming language used for the server implementation.
+* **Maven:** Build automation tool used for compiling and packaging the project.
+* **Java Loom Virtual Threads:** Used for efficient handling of concurrent client requests.
 
-Along the way you'll learn about TCP servers,
-[HTTP request syntax](https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html),
-and more.
+## Features
+* **Handles GET requests:**  Serves static files from a specified directory and responds to `/echo/{message}` and `/user-agent` endpoints.
+* **Handles POST requests:** Creates files specified in `/files/{filename}` endpoint.  File content is taken from the request body.
+* **Static File Serving:** Serves files from a user-specified directory.
+* **Gzip Compression:** Supports gzip compression for responses if the client requests it.
+* **Error Handling:** Returns appropriate HTTP error codes (404 Not Found, 403 Forbidden, 500 Internal Server Error) for various error conditions.
+* **Multi-Client Handling:** Uses virtual threads to handle multiple client connections concurrently.
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+## Usage
+1.  **Set up the file directory (optional):**  If you want the server to serve static files or handle file uploads, create a directory and specify its path using the `--directory <path>` command-line argument when running the server.
+2.  **Run the server:** Execute the `your_program.sh` script. This will compile and run the server, listening on port 4221.
 
-# Passing the first stage
+Example (serving files from `/path/to/files`):
 
-The entry point for your HTTP server implementation is in
-`src/main/java/Main.java`. Study and uncomment the relevant code, and push your
-changes to pass the first stage:
-
-```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
+```bash
+./your_program.sh --directory /path/to/files
 ```
 
-Time to move on to the next stage!
+To test the server, use a tool like `curl` or a web browser.
 
-# Stage 2 & beyond
+Example using curl:
 
-Note: This section is for stages 2 and beyond.
+```bash
+curl http://localhost:4221/echo/hello
+curl -H "Accept-Encoding: gzip" http://localhost:4221/echo/hello  # test gzip compression
+curl -X POST -H "Content-Type: text/plain" -H "Content-Length: 13" -d "Hello, world!" http://localhost:4221/files/test.txt
+```
 
-1. Ensure you have `mvn` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main/java/Main.java`.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+*README.md was made with [Etchr](https://etchr.dev)*
